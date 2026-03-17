@@ -425,6 +425,66 @@ function get_answers_for_candidate(PDO $pdo, int $candidateId): array
     return $stmt->fetchAll();
 }
 
+function get_answer_details_for_candidate_export(PDO $pdo, int $candidateId): array
+{
+    $stmt = $pdo->prepare(
+        "SELECT
+            c.id AS candidate_id,
+            c.full_name,
+            c.email,
+            c.whatsapp,
+            c.selected_role,
+            c.recommendation,
+            c.status,
+            q.id AS question_id,
+            q.question_order,
+            q.role_key AS question_role,
+            q.option_a,
+            q.option_b,
+            q.option_c,
+            q.option_d,
+            MAX(CASE WHEN a.answer_type = 'most' THEN a.option_code END) AS most_code,
+            MAX(CASE WHEN a.answer_type = 'least' THEN a.option_code END) AS least_code
+        FROM answers a
+        INNER JOIN candidates c ON c.id = a.candidate_id
+        LEFT JOIN questions_bank q ON q.id = a.question_id
+        WHERE c.id = ?
+        GROUP BY c.id, q.id
+        ORDER BY q.question_order ASC, q.id ASC"
+    );
+    $stmt->execute([$candidateId]);
+    return $stmt->fetchAll();
+}
+
+function list_answer_details_for_export(PDO $pdo): array
+{
+    $stmt = $pdo->query(
+        "SELECT
+            c.id AS candidate_id,
+            c.full_name,
+            c.email,
+            c.whatsapp,
+            c.selected_role,
+            c.recommendation,
+            c.status,
+            q.id AS question_id,
+            q.question_order,
+            q.role_key AS question_role,
+            q.option_a,
+            q.option_b,
+            q.option_c,
+            q.option_d,
+            MAX(CASE WHEN a.answer_type = 'most' THEN a.option_code END) AS most_code,
+            MAX(CASE WHEN a.answer_type = 'least' THEN a.option_code END) AS least_code
+        FROM answers a
+        INNER JOIN candidates c ON c.id = a.candidate_id
+        LEFT JOIN questions_bank q ON q.id = a.question_id
+        GROUP BY c.id, q.id
+        ORDER BY c.created_at DESC, c.id DESC, q.question_order ASC, q.id ASC"
+    );
+    return $stmt->fetchAll();
+}
+
 function delete_candidate(PDO $pdo, int $id): bool
 {
     $pdo->beginTransaction();

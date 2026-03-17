@@ -176,6 +176,26 @@ function parse_candidate_profile_answers(array $answers): array
     return array_values($map);
 }
 
+function answer_option_text(array $row, ?string $code): string
+{
+    if ($code === null || $code === '') {
+        return '-';
+    }
+
+    switch ($code) {
+        case 'A':
+            return (string) ($row['option_a'] ?? '-');
+        case 'B':
+            return (string) ($row['option_b'] ?? '-');
+        case 'C':
+            return (string) ($row['option_c'] ?? '-');
+        case 'D':
+            return (string) ($row['option_d'] ?? '-');
+        default:
+            return '-';
+    }
+}
+
 if ($method === 'GET' && $path === '/') {
     $candidate = ensure_candidate_session($pdo);
     if ($candidate && $candidate['status'] === 'in_progress') {
@@ -566,6 +586,102 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)$#', $path, $m)) {
     exit;
 }
 
+if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)/export/answers\.csv$#', $path, $m)) {
+    require_hr_auth($config);
+
+    $candidateId = (int) $m[1];
+    $candidate = get_candidate_by_id($pdo, $candidateId);
+    if (!$candidate) {
+        http_response_code(404);
+        echo 'Candidate not found';
+        exit;
+    }
+
+    $rows = get_answer_details_for_candidate_export($pdo, $candidateId);
+
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="candidate-answers-' . $candidateId . '-' . time() . '.csv"');
+
+    $out = fopen('php://output', 'w');
+    fputcsv($out, [
+        'Candidate ID',
+        'Nama',
+        'Email',
+        'WA',
+        'Role Dipilih',
+        'Rekomendasi',
+        'Status',
+        'No Soal',
+        'Role Soal',
+        'Most',
+        'Most Text',
+        'Least',
+        'Least Text',
+    ]);
+
+    foreach ($rows as $row) {
+        $mostCode = (string) ($row['most_code'] ?? '');
+        $leastCode = (string) ($row['least_code'] ?? '');
+        fputcsv($out, [
+            $row['candidate_id'],
+            $row['full_name'],
+            $row['email'],
+            $row['whatsapp'],
+            $row['selected_role'],
+            map_recommendation_label($row['recommendation'] ?? null),
+            $row['status'],
+            (int) ($row['question_order'] ?? 0),
+            $row['question_role'] ?? '-',
+            $mostCode !== '' ? $mostCode : '-',
+            answer_option_text($row, $mostCode),
+            $leastCode !== '' ? $leastCode : '-',
+            answer_option_text($row, $leastCode),
+        ]);
+    }
+    fclose($out);
+    exit;
+}
+
+if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)/export/answers\.pdf$#', $path, $m)) {
+    require_hr_auth($config);
+
+    $candidateId = (int) $m[1];
+    $candidate = get_candidate_by_id($pdo, $candidateId);
+    if (!$candidate) {
+        http_response_code(404);
+        echo 'Candidate not found';
+        exit;
+    }
+
+    $rows = get_answer_details_for_candidate_export($pdo, $candidateId);
+
+    header('Content-Type: text/html; charset=utf-8');
+    echo '<!doctype html><html><head><meta charset="utf-8"><title>Jawaban Kandidat #' . h((string) $candidateId) . '</title><style>body{font-family:Arial,sans-serif;padding:20px;}h2{margin:0 0 6px;}p{margin:4px 0 12px;}table{border-collapse:collapse;width:100%;font-size:12px}th,td{border:1px solid #ddd;padding:6px;vertical-align:top;text-align:left;}th{background:#f2f2f2}</style></head><body>';
+    echo '<h2>Jawaban Kandidat #' . h((string) $candidateId) . '</h2>';
+    echo '<p><strong>Nama:</strong> ' . h((string) ($candidate['full_name'] ?? '-')) . '<br>';
+    echo '<strong>Email:</strong> ' . h((string) ($candidate['email'] ?? '-')) . '<br>';
+    echo '<strong>Role Dipilih:</strong> ' . h((string) ($candidate['selected_role'] ?? '-')) . '<br>';
+    echo '<strong>Rekomendasi:</strong> ' . h(map_recommendation_label($candidate['recommendation'] ?? null)) . '<br>';
+    echo '<strong>Status:</strong> ' . h((string) ($candidate['status'] ?? '-')) . '</p>';
+    echo '<p>Gunakan menu browser: Print -> Save as PDF.</p>';
+    echo '<table><thead><tr><th>No</th><th>Role Soal</th><th>Most</th><th>Least</th></tr></thead><tbody>';
+    foreach ($rows as $row) {
+        $mostCode = (string) ($row['most_code'] ?? '');
+        $leastCode = (string) ($row['least_code'] ?? '');
+        $mostText = answer_option_text($row, $mostCode);
+        $leastText = answer_option_text($row, $leastCode);
+
+        echo '<tr>'
+            . '<td>' . h((string) ((int) ($row['question_order'] ?? 0))) . '</td>'
+            . '<td>' . h((string) ($row['question_role'] ?? '-')) . '</td>'
+            . '<td><strong>' . h($mostCode !== '' ? $mostCode : '-') . '</strong><br>' . h($mostText) . '</td>'
+            . '<td><strong>' . h($leastCode !== '' ? $leastCode : '-') . '</strong><br>' . h($leastText) . '</td>'
+            . '</tr>';
+    }
+    echo '</tbody></table></body></html>';
+    exit;
+}
+
 if ($method === 'GET' && $path === '/hr/questions') {
     require_hr_auth($config);
     $roleFilter = trim((string) ($_GET['role'] ?? ''));
@@ -764,6 +880,53 @@ if ($method === 'GET' && $path === '/hr/export/pdf') {
             . '</tr>';
     }
     echo '</tbody></table></body></html>';
+    exit;
+}
+
+if ($method === 'GET' && $path === '/hr/export/answers.csv') {
+    require_hr_auth($config);
+
+    $rows = list_answer_details_for_export($pdo);
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="disc-answers-all-' . time() . '.csv"');
+
+    $out = fopen('php://output', 'w');
+    fputcsv($out, [
+        'Candidate ID',
+        'Nama',
+        'Email',
+        'WA',
+        'Role Dipilih',
+        'Rekomendasi',
+        'Status',
+        'No Soal',
+        'Role Soal',
+        'Most',
+        'Most Text',
+        'Least',
+        'Least Text',
+    ]);
+
+    foreach ($rows as $row) {
+        $mostCode = (string) ($row['most_code'] ?? '');
+        $leastCode = (string) ($row['least_code'] ?? '');
+        fputcsv($out, [
+            $row['candidate_id'],
+            $row['full_name'],
+            $row['email'],
+            $row['whatsapp'],
+            $row['selected_role'],
+            map_recommendation_label($row['recommendation'] ?? null),
+            $row['status'],
+            (int) ($row['question_order'] ?? 0),
+            $row['question_role'] ?? '-',
+            $mostCode !== '' ? $mostCode : '-',
+            answer_option_text($row, $mostCode),
+            $leastCode !== '' ? $leastCode : '-',
+            answer_option_text($row, $leastCode),
+        ]);
+    }
+    fclose($out);
     exit;
 }
 
