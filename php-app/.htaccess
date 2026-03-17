@@ -1,0 +1,12 @@
+RewriteEngine On
+
+# Serve existing files/folders directly
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# If request starts with public/, send as-is
+RewriteRule ^public/ - [L]
+
+# Route everything else to root index (which loads public/index.php)
+RewriteRule ^ index.php [L,QSA]
