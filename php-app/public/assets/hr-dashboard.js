@@ -9,12 +9,17 @@
   let discChart;
 
   const roleLabels = {
-    SERVER_SPECIALIST: 'Server Specialist',
-    BEVERAGE_SPECIALIST: 'Beverage Specialist',
-    SENIOR_COOK: 'Senior Cook',
+    FLOOR_CREW: 'Floor Crew ( Server, Runner, Housekeeping )',
+    BAR_CREW: 'Bar Crew',
+    KITCHEN_CREW: 'Kitchen Crew ( Cook, Cook Helper, Steward )',
     MANAGER: 'Manager',
-    ASSISTANT_MANAGER: 'Asisten Manager',
-    OPERATIONS_ADMIN: 'Admin Operasional',
+    BACK_OFFICE: 'Back Office ( Admin )',
+    // Legacy codes
+    SERVER_SPECIALIST: 'Floor Crew ( Server, Runner, Housekeeping )',
+    BEVERAGE_SPECIALIST: 'Bar Crew',
+    SENIOR_COOK: 'Kitchen Crew ( Cook, Cook Helper, Steward )',
+    ASSISTANT_MANAGER: 'Manager',
+    OPERATIONS_ADMIN: 'Back Office ( Admin )',
     TIDAK_DIREKOMENDASIKAN_SERVICE: 'Tidak Direkomendasikan (Grup Service)',
     TIDAK_DIREKOMENDASIKAN_MANAGEMENT: 'Tidak Direkomendasikan (Grup Management)',
     INCOMPLETE: 'Incomplete',

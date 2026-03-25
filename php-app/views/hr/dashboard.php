@@ -8,6 +8,7 @@
       <a href="<?= h(route_path('/hr/questions')) ?>" class="btn-secondary">Kelola Soal</a>
       <a href="<?= h(route_path('/hr/export/excel')) ?>" class="btn-secondary">Export Excel</a>
       <a href="<?= h(route_path('/hr/export/pdf')) ?>" class="btn-secondary">Export PDF</a>
+      <a href="<?= h(route_path('/hr/export/answers.csv')) ?>" class="btn-secondary">Export Jawaban (CSV)</a>
       <form method="post" action="<?= h(route_path('/hr/logout')) ?>" class="inline-form">
         <input type="hidden" name="_csrf" value="<?= h($csrf_token) ?>">
         <button type="submit" class="btn-secondary">Logout</button>

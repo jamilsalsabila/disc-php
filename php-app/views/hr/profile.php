@@ -7,6 +7,8 @@
     </div>
     <div class="hr-actions">
       <a href="<?= h(route_path('/hr/dashboard')) ?>" class="btn-secondary">Kembali ke Dashboard</a>
+      <a href="<?= h(route_path('/hr/candidates/' . $candidate['id'] . '/export/answers.csv')) ?>" class="btn-secondary">Download Jawaban CSV</a>
+      <a href="<?= h(route_path('/hr/candidates/' . $candidate['id'] . '/export/answers.pdf')) ?>" class="btn-secondary">Download Jawaban PDF</a>
       <form method="post" action="<?= h(route_path('/hr/candidates/' . $candidate['id'] . '/delete')) ?>" class="inline-form" onsubmit="return confirm('Hapus hasil tes kandidat ini? Tindakan ini tidak bisa dibatalkan.');">
         <input type="hidden" name="_csrf" value="<?= h($csrf_token) ?>">
         <button type="submit" class="btn-danger-outline">Hapus Hasil Tes</button>

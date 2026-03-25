@@ -72,7 +72,7 @@ function migrate(PDO $pdo, array $config): void
     $pdo->exec(
         "CREATE TABLE IF NOT EXISTS questions_bank (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            role_key TEXT NOT NULL DEFAULT 'Server Specialist',
+            role_key TEXT NOT NULL DEFAULT 'Floor Crew ( Server, Runner, Housekeeping )',
             question_order INTEGER NOT NULL,
             option_a TEXT NOT NULL,
             option_b TEXT NOT NULL,
@@ -102,6 +102,7 @@ function migrate(PDO $pdo, array $config): void
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_questions_order ON questions_bank(question_order);');
 
     ensure_questions_role_column($pdo);
+    migrate_legacy_role_keys($pdo);
     ensure_candidate_role_scores_column($pdo);
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_questions_role_order ON questions_bank(role_key, question_order);');
 
@@ -120,10 +121,26 @@ function ensure_questions_role_column(PDO $pdo): void
     }
 
     if (!$hasRole) {
-        $pdo->exec("ALTER TABLE questions_bank ADD COLUMN role_key TEXT NOT NULL DEFAULT 'Server Specialist'");
+        $pdo->exec("ALTER TABLE questions_bank ADD COLUMN role_key TEXT NOT NULL DEFAULT 'Floor Crew ( Server, Runner, Housekeeping )'");
     }
 
-    $pdo->exec("UPDATE questions_bank SET role_key = 'Server Specialist' WHERE role_key IS NULL OR role_key = ''");
+    $pdo->exec("UPDATE questions_bank SET role_key = 'Floor Crew ( Server, Runner, Housekeeping )' WHERE role_key IS NULL OR role_key = ''");
+}
+
+function migrate_legacy_role_keys(PDO $pdo): void
+{
+    $roleMap = [
+        'Server Specialist' => 'Floor Crew ( Server, Runner, Housekeeping )',
+        'Beverage Specialist' => 'Bar Crew',
+        'Senior Cook' => 'Kitchen Crew ( Cook, Cook Helper, Steward )',
+        'Admin Operasional' => 'Back Office ( Admin )',
+        'Asisten Manager' => 'Manager',
+    ];
+
+    $stmt = $pdo->prepare('UPDATE questions_bank SET role_key = ? WHERE role_key = ?');
+    foreach ($roleMap as $legacy => $next) {
+        $stmt->execute([$next, $legacy]);
+    }
 }
 
 function ensure_candidate_role_scores_column(PDO $pdo): void
@@ -383,9 +400,9 @@ function save_submission(PDO $pdo, array $payload): void
         $evaluation['discCounts']['I'] ?? 0,
         $evaluation['discCounts']['S'] ?? 0,
         $evaluation['discCounts']['C'] ?? 0,
-        $evaluation['roleScores']['SERVER_SPECIALIST'] ?? 0,
-        $evaluation['roleScores']['BEVERAGE_SPECIALIST'] ?? 0,
-        $evaluation['roleScores']['SENIOR_COOK'] ?? 0,
+        $evaluation['roleScores']['FLOOR_CREW'] ?? $evaluation['roleScores']['SERVER_SPECIALIST'] ?? 0,
+        $evaluation['roleScores']['BAR_CREW'] ?? $evaluation['roleScores']['BEVERAGE_SPECIALIST'] ?? 0,
+        $evaluation['roleScores']['KITCHEN_CREW'] ?? $evaluation['roleScores']['SENIOR_COOK'] ?? 0,
         $payload['candidate_id'],
     ]);
 
@@ -422,6 +439,66 @@ function get_answers_for_candidate(PDO $pdo, int $candidateId): array
 {
     $stmt = $pdo->prepare('SELECT * FROM answers WHERE candidate_id = ? ORDER BY question_id ASC, answer_type DESC');
     $stmt->execute([$candidateId]);
+    return $stmt->fetchAll();
+}
+
+function get_answer_details_for_candidate_export(PDO $pdo, int $candidateId): array
+{
+    $stmt = $pdo->prepare(
+        "SELECT
+            c.id AS candidate_id,
+            c.full_name,
+            c.email,
+            c.whatsapp,
+            c.selected_role,
+            c.recommendation,
+            c.status,
+            q.id AS question_id,
+            q.question_order,
+            q.role_key AS question_role,
+            q.option_a,
+            q.option_b,
+            q.option_c,
+            q.option_d,
+            MAX(CASE WHEN a.answer_type = 'most' THEN a.option_code END) AS most_code,
+            MAX(CASE WHEN a.answer_type = 'least' THEN a.option_code END) AS least_code
+        FROM answers a
+        INNER JOIN candidates c ON c.id = a.candidate_id
+        LEFT JOIN questions_bank q ON q.id = a.question_id
+        WHERE c.id = ?
+        GROUP BY c.id, q.id
+        ORDER BY q.question_order ASC, q.id ASC"
+    );
+    $stmt->execute([$candidateId]);
+    return $stmt->fetchAll();
+}
+
+function list_answer_details_for_export(PDO $pdo): array
+{
+    $stmt = $pdo->query(
+        "SELECT
+            c.id AS candidate_id,
+            c.full_name,
+            c.email,
+            c.whatsapp,
+            c.selected_role,
+            c.recommendation,
+            c.status,
+            q.id AS question_id,
+            q.question_order,
+            q.role_key AS question_role,
+            q.option_a,
+            q.option_b,
+            q.option_c,
+            q.option_d,
+            MAX(CASE WHEN a.answer_type = 'most' THEN a.option_code END) AS most_code,
+            MAX(CASE WHEN a.answer_type = 'least' THEN a.option_code END) AS least_code
+        FROM answers a
+        INNER JOIN candidates c ON c.id = a.candidate_id
+        LEFT JOIN questions_bank q ON q.id = a.question_id
+        GROUP BY c.id, q.id
+        ORDER BY c.created_at DESC, c.id DESC, q.question_order ASC, q.id ASC"
+    );
     return $stmt->fetchAll();
 }
 

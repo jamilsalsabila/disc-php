@@ -3,18 +3,18 @@
 declare(strict_types=1);
 
 const ROLE_PROFILES = [
-    'SERVER_SPECIALIST' => [
-        'label' => 'Server Specialist',
+    'FLOOR_CREW' => [
+        'label' => 'Floor Crew ( Server, Runner, Housekeeping )',
         'weights' => ['D' => 0.1, 'I' => 0.45, 'S' => 0.3, 'C' => 0.15],
         'gates' => ['I' => 6, 'S' => 4],
     ],
-    'BEVERAGE_SPECIALIST' => [
-        'label' => 'Beverage Specialist',
+    'BAR_CREW' => [
+        'label' => 'Bar Crew',
         'weights' => ['D' => 0.2, 'I' => 0.3, 'S' => 0.15, 'C' => 0.35],
         'gates' => ['I' => 5, 'C' => 5],
     ],
-    'SENIOR_COOK' => [
-        'label' => 'Senior Cook',
+    'KITCHEN_CREW' => [
+        'label' => 'Kitchen Crew ( Cook, Cook Helper, Steward )',
         'weights' => ['D' => 0.25, 'I' => 0.1, 'S' => 0.2, 'C' => 0.45],
         'gates' => ['D' => 5, 'C' => 7],
     ],
@@ -23,30 +23,30 @@ const ROLE_PROFILES = [
         'weights' => ['D' => 0.4, 'I' => 0.3, 'S' => 0.15, 'C' => 0.15],
         'gates' => ['D' => 6, 'I' => 5],
     ],
-    'ASSISTANT_MANAGER' => [
-        'label' => 'Asisten Manager',
-        'weights' => ['D' => 0.3, 'I' => 0.2, 'S' => 0.25, 'C' => 0.25],
-        'gates' => ['D' => 5, 'S' => 5, 'C' => 5],
-    ],
-    'OPERATIONS_ADMIN' => [
-        'label' => 'Admin Operasional',
+    'BACK_OFFICE' => [
+        'label' => 'Back Office ( Admin )',
         'weights' => ['D' => 0.1, 'I' => 0.1, 'S' => 0.3, 'C' => 0.5],
         'gates' => ['S' => 5, 'C' => 7],
     ],
 ];
 
 const ROLE_LABEL_TO_KEY = [
-    'Server Specialist' => 'SERVER_SPECIALIST',
-    'Beverage Specialist' => 'BEVERAGE_SPECIALIST',
-    'Senior Cook' => 'SENIOR_COOK',
+    'Floor Crew ( Server, Runner, Housekeeping )' => 'FLOOR_CREW',
+    'Bar Crew' => 'BAR_CREW',
+    'Kitchen Crew ( Cook, Cook Helper, Steward )' => 'KITCHEN_CREW',
     'Manager' => 'MANAGER',
-    'Asisten Manager' => 'ASSISTANT_MANAGER',
-    'Admin Operasional' => 'OPERATIONS_ADMIN',
+    'Back Office ( Admin )' => 'BACK_OFFICE',
+    // Legacy aliases (agar data lama tetap kebaca)
+    'Server Specialist' => 'FLOOR_CREW',
+    'Beverage Specialist' => 'BAR_CREW',
+    'Senior Cook' => 'KITCHEN_CREW',
+    'Asisten Manager' => 'MANAGER',
+    'Admin Operasional' => 'BACK_OFFICE',
 ];
 
 const ROLE_GROUPS = [
-    'SERVICE' => ['SERVER_SPECIALIST', 'BEVERAGE_SPECIALIST', 'SENIOR_COOK'],
-    'MANAGEMENT' => ['MANAGER', 'ASSISTANT_MANAGER', 'OPERATIONS_ADMIN'],
+    'SERVICE' => ['FLOOR_CREW', 'BAR_CREW', 'KITCHEN_CREW'],
+    'MANAGEMENT' => ['MANAGER', 'BACK_OFFICE'],
 ];
 
 const PRIMARY_MIN_FIT = 55;
@@ -79,9 +79,9 @@ function opposite_role_group(string $group): string
 function role_group_label(string $group): string
 {
     if ($group === 'SERVICE') {
-        return 'Service (Server Specialist / Beverage Specialist / Senior Cook)';
+        return 'Service (Floor Crew / Bar Crew / Kitchen Crew)';
     }
-    return 'Management (Manager / Asisten Manager / Admin Operasional)';
+    return 'Management (Manager / Back Office)';
 }
 
 function normalize_role_key(?string $preferredRoleLabel): ?string

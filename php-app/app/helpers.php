@@ -44,18 +44,27 @@ function format_date_id(?string $iso): string
 function map_recommendation_label(?string $code): string
 {
     switch ($code) {
-        case 'SERVER_SPECIALIST':
-            return 'Server Specialist';
-        case 'BEVERAGE_SPECIALIST':
-            return 'Beverage Specialist';
-        case 'SENIOR_COOK':
-            return 'Senior Cook';
+        case 'FLOOR_CREW':
+            return 'Floor Crew ( Server, Runner, Housekeeping )';
+        case 'BAR_CREW':
+            return 'Bar Crew';
+        case 'KITCHEN_CREW':
+            return 'Kitchen Crew ( Cook, Cook Helper, Steward )';
         case 'MANAGER':
             return 'Manager';
+        case 'BACK_OFFICE':
+            return 'Back Office ( Admin )';
+        // Legacy codes
+        case 'SERVER_SPECIALIST':
+            return 'Floor Crew ( Server, Runner, Housekeeping )';
+        case 'BEVERAGE_SPECIALIST':
+            return 'Bar Crew';
+        case 'SENIOR_COOK':
+            return 'Kitchen Crew ( Cook, Cook Helper, Steward )';
         case 'ASSISTANT_MANAGER':
-            return 'Asisten Manager';
+            return 'Manager';
         case 'OPERATIONS_ADMIN':
-            return 'Admin Operasional';
+            return 'Back Office ( Admin )';
         case 'INCOMPLETE':
             return 'Incomplete';
         case 'TIDAK_DIREKOMENDASIKAN_SERVICE':

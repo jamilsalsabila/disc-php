@@ -3,12 +3,17 @@
   const roleData = window.roleScoreData || {};
   const isMobile = window.matchMedia('(max-width: 860px)').matches;
   const roleLabelsMap = {
-    SERVER_SPECIALIST: 'Server Specialist',
-    BEVERAGE_SPECIALIST: 'Beverage Specialist',
-    SENIOR_COOK: 'Senior Cook',
+    FLOOR_CREW: 'Floor Crew ( Server, Runner, Housekeeping )',
+    BAR_CREW: 'Bar Crew',
+    KITCHEN_CREW: 'Kitchen Crew ( Cook, Cook Helper, Steward )',
     MANAGER: 'Manager',
-    ASSISTANT_MANAGER: 'Asisten Manager',
-    OPERATIONS_ADMIN: 'Admin Operasional'
+    BACK_OFFICE: 'Back Office ( Admin )',
+    // Legacy codes
+    SERVER_SPECIALIST: 'Floor Crew ( Server, Runner, Housekeeping )',
+    BEVERAGE_SPECIALIST: 'Bar Crew',
+    SENIOR_COOK: 'Kitchen Crew ( Cook, Cook Helper, Steward )',
+    ASSISTANT_MANAGER: 'Manager',
+    OPERATIONS_ADMIN: 'Back Office ( Admin )'
   };
 
   const radar = document.getElementById('discRadar');
