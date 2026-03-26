@@ -69,12 +69,37 @@ function env(string $key, $default = null)
     return $value === false ? $default : $value;
 }
 
+function detect_base_path(): string
+{
+    $envBase = rtrim((string) env('APP_BASE_PATH', ''), '/');
+    if ($envBase !== '') {
+        return $envBase;
+    }
+
+    $scriptName = str_replace('\\', '/', (string) ($_SERVER['SCRIPT_NAME'] ?? ''));
+    if ($scriptName === '') {
+        return '';
+    }
+
+    $dir = str_replace('\\', '/', dirname($scriptName));
+    if ($dir === '.' || $dir === '/' || $dir === '\\') {
+        return '';
+    }
+
+    if (compat_ends_with($dir, '/public')) {
+        $dir = substr($dir, 0, -7);
+    }
+
+    $dir = rtrim($dir, '/');
+    return $dir === '' ? '' : $dir;
+}
+
 load_env(dirname(__DIR__) . '/.env');
 
 return [
     'app_name' => 'DISC Assessment',
     'timezone' => env('APP_TIMEZONE', 'Asia/Jakarta'),
-    'base_path' => rtrim((string) env('APP_BASE_PATH', ''), '/'),
+    'base_path' => detect_base_path(),
     'test_duration_minutes' => (int) env('TEST_DURATION_MINUTES', 10),
     'min_completion_ratio' => (float) env('MIN_COMPLETION_RATIO', 0.8),
     'role_options' => [

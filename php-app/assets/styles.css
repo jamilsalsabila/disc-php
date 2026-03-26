@@ -30,6 +30,7 @@ body {
   color: var(--ink);
   line-height: 1.6;
   letter-spacing: 0.008em;
+  font-size: 15px;
 }
 
 h1, h2, h3 {
@@ -37,6 +38,18 @@ h1, h2, h3 {
   margin: 0;
   letter-spacing: 0.01em;
   line-height: 1.25;
+}
+
+h1 {
+  font-size: clamp(1.35rem, 1.1rem + 1vw, 2rem);
+}
+
+h2 {
+  font-size: clamp(1.2rem, 1rem + 0.8vw, 1.6rem);
+}
+
+h3 {
+  font-size: clamp(1.02rem, 0.9rem + 0.35vw, 1.2rem);
 }
 
 p {
@@ -64,16 +77,16 @@ p {
   min-height: 100vh;
   display: grid;
   place-items: center;
-  padding: 24px;
+  padding: 20px;
 }
 
 .hero-card,
 .simple-card {
-  width: min(680px, 100%);
+  width: min(660px, 100%);
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 20px;
-  padding: 28px;
+  border-radius: 18px;
+  padding: 24px;
   box-shadow: 0 14px 40px rgba(15, 23, 42, 0.08);
 }
 
@@ -132,7 +145,7 @@ p {
 label {
   display: grid;
   gap: 6px;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.004em;
 }
@@ -148,7 +161,7 @@ select {
   width: 100%;
   border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 11px 12px;
+  padding: 10px 12px;
   background: #fff;
 }
 
@@ -163,12 +176,14 @@ select {
 .btn-primary,
 .btn-secondary {
   border: 0;
-  border-radius: 12px;
-  padding: 12px 16px;
+  border-radius: 10px;
+  padding: 10px 14px;
   cursor: pointer;
   text-decoration: none;
   display: inline-block;
   font-weight: 700;
+  font-size: 13px;
+  line-height: 1.2;
 }
 
 .btn-primary {
@@ -186,10 +201,11 @@ select {
   border: 1px solid #fca5a5;
   background: #fff1f2;
   color: #b91c1c;
-  border-radius: 10px;
-  padding: 9px 12px;
+  border-radius: 9px;
+  padding: 8px 11px;
   font-weight: 700;
   cursor: pointer;
+  font-size: 12px;
 }
 
 .btn-danger-outline:hover {
@@ -201,7 +217,7 @@ select {
 .profile-page {
   max-width: 1100px;
   margin: 0 auto;
-  padding: 24px;
+  padding: 20px;
 }
 
 .test-page {
@@ -278,9 +294,9 @@ select {
 .profile-card {
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 16px;
-  margin-bottom: 16px;
+  border-radius: 14px;
+  padding: 14px;
+  margin-bottom: 14px;
 }
 
 .test-page .question-card,
@@ -293,8 +309,8 @@ select {
 .progress-panel {
   background: #fff;
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 10px 12px;
+  border-radius: 10px;
+  padding: 8px 10px;
   margin-bottom: 12px;
   display: flex;
   align-items: center;
@@ -303,13 +319,13 @@ select {
 
 .progress-panel span {
   color: var(--muted);
-  font-size: 13px;
+  font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 
 .progress-panel strong {
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .info-panel {
@@ -335,9 +351,9 @@ select {
 }
 
 .options-grid {
-  margin-top: 12px;
+  margin-top: 10px;
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .ml-table {
@@ -352,7 +368,7 @@ select {
 
 .ml-table th,
 .ml-table td {
-  padding: 10px 12px;
+  padding: 8px 10px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -375,9 +391,10 @@ select {
   gap: 10px;
   align-items: flex-start;
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 12px;
+  border-radius: 10px;
+  padding: 10px;
   font-weight: 500;
+  font-size: 13px;
 }
 
 .option-item.least {
@@ -409,7 +426,7 @@ select {
 .sticky-submit {
   position: sticky;
   bottom: 8px;
-  padding: 10px 0;
+  padding: 8px 0;
   background: linear-gradient(to top, var(--bg), transparent);
   max-width: 860px;
   margin-left: auto;
@@ -436,7 +453,7 @@ select {
 }
 
 .chart-card {
-  padding: 18px;
+  padding: 14px;
 }
 
 .chart-card h3 {
@@ -449,11 +466,38 @@ select {
 }
 
 .chart-shell-donut {
-  height: 280px;
+  height: 250px;
+}
+
+.role-legend {
+  margin-top: 10px;
+  display: grid;
+  gap: 6px;
+}
+
+.role-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.role-legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+
+.role-legend-text {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .chart-shell-bar {
-  height: 280px;
+  height: 250px;
 }
 
 .chart-shell-profile-radar {
@@ -476,14 +520,15 @@ select {
 
 .chart-note {
   color: var(--muted);
-  font-size: 13px;
+  font-size: 12px;
   margin: 6px 0 2px;
 }
 
 .hr-actions {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .inline-form {
@@ -569,11 +614,11 @@ table {
 
 th,
 td {
-  padding: 10px;
+  padding: 8px;
   border-bottom: 1px solid var(--border);
   text-align: left;
   vertical-align: top;
-  font-size: 14px;
+  font-size: 13px;
   overflow-wrap: anywhere;
   word-break: break-word;
   line-height: 1.5;
@@ -592,12 +637,37 @@ th {
 
 .btn-detail {
   display: inline-block;
-  padding: 6px 10px;
+  padding: 5px 9px;
   border: 1px solid #bae6fd;
   border-radius: 9px;
   background: #f0f9ff;
   text-decoration: none;
-  margin-right: 6px;
+  margin-right: 4px;
+  font-size: 12px;
+}
+
+.table-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.action-btn {
+  min-height: 32px;
+  min-width: 96px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 10px;
+  font-size: 12px;
+  line-height: 1.1;
+  border-radius: 9px;
+  text-align: center;
+}
+
+.table-actions .btn-detail {
+  margin-right: 0;
 }
 
 .candidate-row {
@@ -623,7 +693,7 @@ th {
 }
 
 .table-card table {
-  min-width: 860px;
+  min-width: 780px;
 }
 
 .answer-card {
@@ -662,6 +732,7 @@ th {
   .hr-header,
   .profile-header {
     flex-direction: column;
+    gap: 10px;
   }
 
   .filter-grid,
@@ -676,7 +747,7 @@ th {
   }
 
   .hr-page {
-    padding: 16px;
+    padding: 14px;
   }
 
   .profile-page {
@@ -693,19 +764,27 @@ th {
   }
 
   .profile-card {
-    padding: 14px;
+    padding: 12px;
   }
 
   .chart-card {
-    padding: 14px;
+    padding: 12px;
   }
 
   .chart-shell-donut {
-    height: 220px;
+    height: 205px;
+  }
+
+  .role-legend {
+    gap: 5px;
+  }
+
+  .role-legend-text {
+    font-size: 11.5px;
   }
 
   .chart-shell-bar {
-    height: 240px;
+    height: 220px;
   }
 
   .chart-shell-profile-radar {
@@ -723,7 +802,7 @@ th {
   }
 
   .table-card table {
-    min-width: 720px;
+    min-width: 650px;
   }
 
   .answer-card {
@@ -743,12 +822,29 @@ th {
   .floating-timer {
     top: 10px;
     right: 10px;
-    min-width: 80px;
-    padding: 7px 9px;
+    min-width: 74px;
+    padding: 6px 8px;
   }
 
   .floating-timer strong {
-    font-size: 18px;
+    font-size: 16px;
+  }
+
+  .floating-timer span {
+    font-size: 9px;
+  }
+
+  .hr-actions .btn-secondary,
+  .hr-actions .btn-danger-outline {
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+
+  .action-btn {
+    min-height: 30px;
+    min-width: 90px;
+    padding: 6px 9px;
+    font-size: 11.5px;
   }
 }
 
@@ -793,7 +889,31 @@ th {
   .profile-page,
   .hr-page,
   .test-page {
+    padding: 10px;
+  }
+
+  .hero-page,
+  .simple-page {
     padding: 12px;
+  }
+
+  .hero-card,
+  .simple-card {
+    padding: 16px;
+    border-radius: 14px;
+  }
+
+  .subtitle {
+    font-size: 13px;
+  }
+
+  .info-panel {
+    padding: 12px;
+  }
+
+  .info-panel ul {
+    font-size: 13px;
+    gap: 5px;
   }
 
   .profile-header h1 {
@@ -805,8 +925,12 @@ th {
     font-size: 13px;
   }
 
+  .role-legend-text {
+    font-size: 11px;
+  }
+
   .profile-card p {
-    font-size: 13px;
+    font-size: 12.5px;
     line-height: 1.4;
   }
 
@@ -823,6 +947,12 @@ th {
   .answer-table th:nth-child(1),
   .answer-table td:nth-child(1) {
     width: 46px;
+  }
+
+  .btn-primary,
+  .btn-secondary {
+    padding: 9px 12px;
+    font-size: 12px;
   }
 }
 

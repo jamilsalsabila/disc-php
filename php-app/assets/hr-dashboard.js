@@ -30,6 +30,52 @@
     return roleLabels[value] || '-';
   }
 
+  function normalizeRoleData(roleData) {
+    const merged = new Map();
+    (roleData || []).forEach((item) => {
+      const label = mapRec(item.recommendation);
+      const total = Number(item.total || 0);
+      merged.set(label, (merged.get(label) || 0) + total);
+    });
+    return Array.from(merged.entries()).map(([label, total]) => ({ label, total }));
+  }
+
+  function buildRoleColors(count) {
+    const colors = [];
+    for (let i = 0; i < count; i += 1) {
+      const hue = Math.round((360 / Math.max(1, count)) * i);
+      colors.push(`hsl(${hue} 74% 52%)`);
+    }
+    return colors;
+  }
+
+  function renderRoleLegend(labels, values, colors) {
+    const chartCard = document.querySelector('.chart-card-role');
+    if (!chartCard) return;
+
+    let legend = chartCard.querySelector('#roleChartLegend');
+    if (!legend) {
+      legend = document.createElement('div');
+      legend.id = 'roleChartLegend';
+      legend.className = 'role-legend';
+      chartCard.appendChild(legend);
+    }
+
+    if (!labels.length) {
+      legend.innerHTML = '';
+      return;
+    }
+
+    legend.innerHTML = labels
+      .map((label, idx) => (
+        `<div class="role-legend-item">
+          <span class="role-legend-dot" style="background:${colors[idx]}"></span>
+          <span class="role-legend-text">${escapeHtml(label)} (${values[idx]})</span>
+        </div>`
+      ))
+      .join('');
+  }
+
   function escapeHtml(value) {
     const str = String(value ?? '');
     return str
@@ -48,8 +94,11 @@
       roleChart.destroy();
     }
 
-    const labels = roleData.map((r) => mapRec(r.recommendation));
-    const values = roleData.map((r) => r.total);
+    const normalized = normalizeRoleData(roleData);
+    const labels = normalized.map((r) => r.label);
+    const values = normalized.map((r) => r.total);
+    const colors = values.length ? buildRoleColors(values.length) : ['#CBD5E1'];
+    renderRoleLegend(labels, values, colors);
 
     roleChart = new Chart(roleCtx, {
       type: 'doughnut',
@@ -57,9 +106,7 @@
         labels: labels.length ? labels : ['Belum ada data'],
         datasets: [{
           data: values.length ? values : [1],
-          backgroundColor: values.length
-            ? ['#F97316', '#0EA5E9', '#14B8A6', '#94A3B8', '#A3A3A3']
-            : ['#CBD5E1'],
+          backgroundColor: colors,
           borderWidth: 0,
           hoverOffset: 10
         }]
@@ -71,14 +118,7 @@
         radius: isMobile ? '84%' : '74%',
         plugins: {
           legend: {
-            position: isMobile ? 'bottom' : 'right',
-            labels: {
-              boxWidth: 12,
-              boxHeight: 12,
-              usePointStyle: true,
-              pointStyle: 'circle',
-              padding: isMobile ? 12 : 16
-            }
+            display: false
           }
         }
       }
@@ -148,7 +188,7 @@
     }
 
     if (!candidates.length) {
-      tableBody.innerHTML = '<tr><td colspan="7">Belum ada data kandidat.</td></tr>';
+      tableBody.innerHTML = '<tr><td colspan="6">Belum ada data kandidat.</td></tr>';
       return;
     }
 
@@ -162,11 +202,12 @@
           </td>
           <td>${escapeHtml(candidate.selected_role)}</td>
           <td>${escapeHtml(mapRec(candidate.recommendation))}</td>
-          <td>D ${candidate.disc_d ?? 0} / I ${candidate.disc_i ?? 0} / S ${candidate.disc_s ?? 0} / C ${candidate.disc_c ?? 0}</td>
           <td>${escapeHtml(candidate.status)}</td>
           <td>
-            <a href="${withBase(`/hr/candidates/${candidate.id}`)}" class="table-link btn-detail">Detail Profil</a>
-            <button type="button" class="btn-danger-outline delete-candidate-btn" data-id="${candidate.id}" data-name="${escapeHtml(candidate.full_name)}">Hapus</button>
+            <div class="table-actions">
+              <a href="${withBase(`/hr/candidates/${candidate.id}`)}" class="table-link btn-detail action-btn">Detail Profil</a>
+              <button type="button" class="btn-danger-outline delete-candidate-btn action-btn" data-id="${candidate.id}" data-name="${escapeHtml(candidate.full_name)}">Hapus</button>
+            </div>
           </td>
         </tr>
       `;

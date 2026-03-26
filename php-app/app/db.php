@@ -102,7 +102,10 @@ function migrate(PDO $pdo, array $config): void
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_questions_order ON questions_bank(question_order);');
 
     ensure_questions_role_column($pdo);
-    migrate_legacy_role_keys($pdo);
+    if (needs_role_migration($pdo)) {
+        migrate_legacy_role_keys($pdo);
+        deduplicate_questions_by_role($pdo);
+    }
     ensure_candidate_role_scores_column($pdo);
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_questions_role_order ON questions_bank(role_key, question_order);');
 
@@ -140,6 +143,84 @@ function migrate_legacy_role_keys(PDO $pdo): void
     $stmt = $pdo->prepare('UPDATE questions_bank SET role_key = ? WHERE role_key = ?');
     foreach ($roleMap as $legacy => $next) {
         $stmt->execute([$next, $legacy]);
+    }
+}
+
+function needs_role_migration(PDO $pdo): bool
+{
+    $legacyCountStmt = $pdo->query(
+        "SELECT COUNT(*) FROM questions_bank
+         WHERE role_key IN (
+            'Server Specialist',
+            'Beverage Specialist',
+            'Senior Cook',
+            'Asisten Manager',
+            'Admin Operasional'
+         )"
+    );
+    $legacyCount = (int) $legacyCountStmt->fetchColumn();
+    if ($legacyCount > 0) {
+        return true;
+    }
+
+    $duplicateStmt = $pdo->query(
+        "SELECT COUNT(*) FROM (
+            SELECT role_key, option_a, option_b, option_c, option_d, COUNT(*) AS c
+            FROM questions_bank
+            GROUP BY role_key, option_a, option_b, option_c, option_d
+            HAVING c > 1
+        )"
+    );
+    $duplicateCount = (int) $duplicateStmt->fetchColumn();
+    return $duplicateCount > 0;
+}
+
+function deduplicate_questions_by_role(PDO $pdo): void
+{
+    $roles = $pdo->query('SELECT DISTINCT role_key FROM questions_bank')->fetchAll(PDO::FETCH_COLUMN);
+    if (!$roles) {
+        return;
+    }
+
+    $selectStmt = $pdo->prepare('SELECT id, option_a, option_b, option_c, option_d FROM questions_bank WHERE role_key = ? ORDER BY question_order ASC, id ASC');
+    $deleteStmt = $pdo->prepare('DELETE FROM questions_bank WHERE id = ?');
+    $reorderStmt = $pdo->prepare('UPDATE questions_bank SET question_order = ?, updated_at = ? WHERE id = ?');
+
+    foreach ($roles as $roleKeyRaw) {
+        $roleKey = (string) $roleKeyRaw;
+        if ($roleKey === '') {
+            continue;
+        }
+
+        $selectStmt->execute([$roleKey]);
+        $rows = $selectStmt->fetchAll(PDO::FETCH_ASSOC);
+        if (!$rows) {
+            continue;
+        }
+
+        $seen = [];
+        $keptIds = [];
+        foreach ($rows as $row) {
+            $key = strtolower(trim((string) ($row['option_a'] ?? '')))
+                . '||' . strtolower(trim((string) ($row['option_b'] ?? '')))
+                . '||' . strtolower(trim((string) ($row['option_c'] ?? '')))
+                . '||' . strtolower(trim((string) ($row['option_d'] ?? '')));
+
+            if (isset($seen[$key])) {
+                $deleteStmt->execute([(int) $row['id']]);
+                continue;
+            }
+
+            $seen[$key] = true;
+            $keptIds[] = (int) $row['id'];
+        }
+
+        $order = 1;
+        $now = now_iso();
+        foreach ($keptIds as $id) {
+            $reorderStmt->execute([$order, $now, $id]);
+            $order++;
+        }
     }
 }
 

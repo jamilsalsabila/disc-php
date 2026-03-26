@@ -58,7 +58,6 @@
           <th>Nama</th>
           <th>Role Dipilih</th>
           <th>Rekomendasi</th>
-          <th>DISC</th>
           <th>Status</th>
           <th>Aksi</th>
         </tr>
@@ -71,16 +70,17 @@
               <td><strong><?= h($candidate['full_name']) ?></strong><br><small><?= h($candidate['email']) ?></small></td>
               <td><?= h($candidate['selected_role']) ?></td>
               <td><?= h(map_recommendation_label($candidate['recommendation'])) ?></td>
-              <td>D <?= h((string) ($candidate['disc_d'] ?? 0)) ?> / I <?= h((string) ($candidate['disc_i'] ?? 0)) ?> / S <?= h((string) ($candidate['disc_s'] ?? 0)) ?> / C <?= h((string) ($candidate['disc_c'] ?? 0)) ?></td>
               <td><?= h($candidate['status']) ?></td>
               <td>
-                <a href="<?= h(route_path('/hr/candidates/' . $candidate['id'])) ?>" class="table-link btn-detail">Detail Profil</a>
-                <button type="button" class="btn-danger-outline delete-candidate-btn" data-id="<?= h((string) $candidate['id']) ?>" data-name="<?= h($candidate['full_name']) ?>">Hapus</button>
+                <div class="table-actions">
+                  <a href="<?= h(route_path('/hr/candidates/' . $candidate['id'])) ?>" class="table-link btn-detail action-btn">Detail Profil</a>
+                  <button type="button" class="btn-danger-outline delete-candidate-btn action-btn" data-id="<?= h((string) $candidate['id']) ?>" data-name="<?= h($candidate['full_name']) ?>">Hapus</button>
+                </div>
               </td>
             </tr>
           <?php endforeach; ?>
         <?php else: ?>
-          <tr><td colspan="7">Belum ada data kandidat.</td></tr>
+          <tr><td colspan="6">Belum ada data kandidat.</td></tr>
         <?php endif; ?>
       </tbody>
     </table>
