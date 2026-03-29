@@ -78,7 +78,15 @@
   const bar = document.getElementById('roleBar');
   if (bar) {
     const barCtx = bar.getContext('2d');
-    const roleEntries = Object.entries(roleData).filter((entry) => Number.isFinite(Number(entry[1])));
+    const normalizeToTen = (value) => {
+      const num = Number(value);
+      if (!Number.isFinite(num)) return 0;
+      if (num > 10) return Math.max(1, Math.min(10, Math.round(num / 10)));
+      return Math.max(0, Math.min(10, Math.round(num)));
+    };
+    const roleEntries = Object.entries(roleData)
+      .filter((entry) => Number.isFinite(Number(entry[1])))
+      .map((entry) => [entry[0], normalizeToTen(entry[1])]);
     const labels = roleEntries.map((entry) => roleLabelsMap[entry[0]] || entry[0]);
     const values = roleEntries.map((entry) => Number(entry[1]));
 
@@ -103,7 +111,7 @@
       data: {
         labels,
         datasets: [{
-          label: 'Role Fit %',
+          label: 'Role Fit (1-10)',
           data: values,
           backgroundColor: gradients,
           borderRadius: 12,
@@ -117,16 +125,17 @@
           legend: { display: false },
           tooltip: {
             callbacks: {
-              label: (context) => ` ${context.parsed.y}%`
+              label: (context) => ` ${context.parsed.y}/10`
             }
           }
         },
         scales: {
           y: {
             beginAtZero: true,
-            suggestedMax: 100,
+            suggestedMax: 10,
             ticks: {
-              callback: (value) => `${value}%`
+              stepSize: 1,
+              callback: (value) => `${value}/10`
             },
             grid: { color: '#E2E8F0' }
           },

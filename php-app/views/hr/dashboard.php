@@ -5,6 +5,7 @@
       <h1>Dashboard DISC Kandidat</h1>
     </div>
     <div class="hr-actions">
+      <button type="button" class="btn-secondary" id="timeout-refresh-btn">Refresh Status</button>
       <a href="<?= h(route_path('/hr/questions')) ?>" class="btn-secondary">Kelola Soal</a>
       <a href="<?= h(route_path('/hr/export/excel')) ?>" class="btn-secondary">Export Excel</a>
       <a href="<?= h(route_path('/hr/export/pdf')) ?>" class="btn-secondary">Export PDF</a>
@@ -58,6 +59,7 @@
           <th>Nama</th>
           <th>Role Dipilih</th>
           <th>Rekomendasi</th>
+          <th>Kelayakan Wawancara</th>
           <th>Status</th>
           <th>Aksi</th>
         </tr>
@@ -70,6 +72,7 @@
               <td><strong><?= h($candidate['full_name']) ?></strong><br><small><?= h($candidate['email']) ?></small></td>
               <td><?= h($candidate['selected_role']) ?></td>
               <td><?= h(map_recommendation_label($candidate['recommendation'])) ?></td>
+              <td><?= h($candidate['interview_recommendation'] ?? '-') ?></td>
               <td><?= h($candidate['status']) ?></td>
               <td>
                 <div class="table-actions">
@@ -80,7 +83,7 @@
             </tr>
           <?php endforeach; ?>
         <?php else: ?>
-          <tr><td colspan="6">Belum ada data kandidat.</td></tr>
+          <tr><td colspan="7">Belum ada data kandidat.</td></tr>
         <?php endif; ?>
       </tbody>
     </table>

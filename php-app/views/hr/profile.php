@@ -25,6 +25,7 @@
       <h3>Ringkasan Penilaian</h3>
       <p><strong>Role dipilih:</strong> <?= h($candidate['selected_role']) ?></p>
       <p><strong>Rekomendasi sistem:</strong> <?= h(map_recommendation_label($candidate['recommendation'])) ?></p>
+      <p><strong>Kelayakan wawancara:</strong> <?= h($interview_recommendation ?? '-') ?></p>
       <p><strong>Status:</strong> <?= h($candidate['status']) ?></p>
       <p><strong>Mulai tes:</strong> <?= h(format_date_id($candidate['started_at'])) ?></p>
       <p><strong>Selesai tes:</strong> <?= h(format_date_id($candidate['submitted_at'])) ?></p>
@@ -41,7 +42,7 @@
         <canvas id="discRadar"></canvas>
       </div>
       <h3>Skor Kecocokan Role</h3>
-      <p class="chart-note">Perbandingan persentase kecocokan terhadap role target.</p>
+      <p class="chart-note">Perbandingan kecocokan terhadap role target dalam skala 1-10.</p>
       <div class="chart-shell chart-shell-profile-bar">
         <canvas id="roleBar"></canvas>
       </div>

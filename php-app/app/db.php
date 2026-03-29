@@ -52,6 +52,7 @@ function migrate(PDO $pdo, array $config): void
             score_server INTEGER DEFAULT 0,
             score_beverage INTEGER DEFAULT 0,
             score_cook INTEGER DEFAULT 0,
+            draft_answers_json TEXT,
             created_at TEXT NOT NULL
         );"
     );
@@ -107,9 +108,12 @@ function migrate(PDO $pdo, array $config): void
         deduplicate_questions_by_role($pdo);
     }
     ensure_candidate_role_scores_column($pdo);
+    ensure_candidate_draft_answers_column($pdo);
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_questions_role_order ON questions_bank(role_key, question_order);');
 
-    seed_questions_by_role_if_missing($pdo, $config);
+    if (!empty($config['auto_seed_questions'])) {
+        seed_questions_by_role_if_missing($pdo, $config);
+    }
 }
 
 function ensure_questions_role_column(PDO $pdo): void
@@ -240,6 +244,22 @@ function ensure_candidate_role_scores_column(PDO $pdo): void
     }
 }
 
+function ensure_candidate_draft_answers_column(PDO $pdo): void
+{
+    $columns = $pdo->query('PRAGMA table_info(candidates)')->fetchAll();
+    $hasDraftAnswers = false;
+    foreach ($columns as $col) {
+        if (($col['name'] ?? '') === 'draft_answers_json') {
+            $hasDraftAnswers = true;
+            break;
+        }
+    }
+
+    if (!$hasDraftAnswers) {
+        $pdo->exec('ALTER TABLE candidates ADD COLUMN draft_answers_json TEXT');
+    }
+}
+
 function seed_questions_by_role_if_missing(PDO $pdo, array $config): void
 {
     $byRole = isset($config['question_sources_by_role']) && is_array($config['question_sources_by_role'])
@@ -329,6 +349,17 @@ function list_questions(PDO $pdo, bool $includeInactive = true, ?string $roleKey
     }, $rows);
 }
 
+function get_question_role_order_keys(PDO $pdo): array
+{
+    $rows = $pdo->query('SELECT role_key, question_order FROM questions_bank')->fetchAll();
+    $keys = [];
+    foreach ($rows as $row) {
+        $key = (string) ($row['role_key'] ?? '') . '||' . (int) ($row['question_order'] ?? 0);
+        $keys[$key] = true;
+    }
+    return $keys;
+}
+
 function get_question_by_id(PDO $pdo, int $id): ?array
 {
     $stmt = $pdo->prepare('SELECT * FROM questions_bank WHERE id = ?');
@@ -365,6 +396,57 @@ function create_question(PDO $pdo, array $payload): void
         $now,
         $now,
     ]);
+}
+
+function create_questions_bulk(PDO $pdo, array $rows, bool $replaceExistingPerRole = false): int
+{
+    if (empty($rows)) {
+        return 0;
+    }
+
+    $pdo->beginTransaction();
+    try {
+        if ($replaceExistingPerRole) {
+            $roles = [];
+            foreach ($rows as $row) {
+                $roleKey = trim((string) ($row['role_key'] ?? ''));
+                if ($roleKey !== '') {
+                    $roles[$roleKey] = true;
+                }
+            }
+
+            if (!empty($roles)) {
+                $deleteStmt = $pdo->prepare('DELETE FROM questions_bank WHERE role_key = ?');
+                foreach (array_keys($roles) as $roleKey) {
+                    $deleteStmt->execute([$roleKey]);
+                }
+            }
+        }
+
+        $insertStmt = $pdo->prepare('INSERT INTO questions_bank (role_key, question_order, option_a, option_b, option_c, option_d, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+        $now = now_iso();
+        $inserted = 0;
+        foreach ($rows as $row) {
+            $insertStmt->execute([
+                trim((string) $row['role_key']),
+                (int) $row['order'],
+                trim((string) $row['option_a']),
+                trim((string) $row['option_b']),
+                trim((string) $row['option_c']),
+                trim((string) $row['option_d']),
+                !empty($row['is_active']) ? 1 : 0,
+                $now,
+                $now,
+            ]);
+            $inserted++;
+        }
+
+        $pdo->commit();
+        return $inserted;
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        throw $e;
+    }
 }
 
 function update_question(PDO $pdo, int $id, array $payload): bool
@@ -455,7 +537,7 @@ function find_candidate_by_identity(PDO $pdo, ?string $emailKey, ?string $waKey)
     return $row ?: null;
 }
 
-function save_submission(PDO $pdo, array $payload): void
+function save_submission(PDO $pdo, array $payload): bool
 {
     $pdo->beginTransaction();
 
@@ -469,7 +551,7 @@ function save_submission(PDO $pdo, array $payload): void
     }
 
     $evaluation = $payload['evaluation'];
-    $updateStmt = $pdo->prepare('UPDATE candidates SET status = ?, submitted_at = ?, duration_seconds = ?, recommendation = ?, reason = ?, role_scores_json = ?, disc_d = ?, disc_i = ?, disc_s = ?, disc_c = ?, score_server = ?, score_beverage = ?, score_cook = ? WHERE id = ?');
+    $updateStmt = $pdo->prepare('UPDATE candidates SET status = ?, submitted_at = ?, duration_seconds = ?, recommendation = ?, reason = ?, role_scores_json = ?, disc_d = ?, disc_i = ?, disc_s = ?, disc_c = ?, score_server = ?, score_beverage = ?, score_cook = ?, draft_answers_json = NULL WHERE id = ? AND status = ?');
     $updateStmt->execute([
         $payload['force_status'] ?? 'submitted',
         $payload['submitted_at'],
@@ -485,9 +567,30 @@ function save_submission(PDO $pdo, array $payload): void
         $evaluation['roleScores']['BAR_CREW'] ?? $evaluation['roleScores']['BEVERAGE_SPECIALIST'] ?? 0,
         $evaluation['roleScores']['KITCHEN_CREW'] ?? $evaluation['roleScores']['SENIOR_COOK'] ?? 0,
         $payload['candidate_id'],
+        'in_progress',
     ]);
 
+    $updated = $updateStmt->rowCount() > 0;
     $pdo->commit();
+    return $updated;
+}
+
+function update_candidate_draft_answers(PDO $pdo, int $candidateId, array $answers): bool
+{
+    $stmt = $pdo->prepare("UPDATE candidates SET draft_answers_json = ? WHERE id = ? AND status = 'in_progress'");
+    $stmt->execute([
+        json_encode($answers, JSON_UNESCAPED_UNICODE),
+        $candidateId,
+    ]);
+    return $stmt->rowCount() > 0;
+}
+
+function list_overdue_in_progress_candidates(PDO $pdo, int $limit = 200): array
+{
+    $safeLimit = max(1, min($limit, 1000));
+    $stmt = $pdo->prepare("SELECT * FROM candidates WHERE status = 'in_progress' AND deadline_at <= ? ORDER BY deadline_at ASC LIMIT {$safeLimit}");
+    $stmt->execute([now_iso()]);
+    return $stmt->fetchAll();
 }
 
 function list_candidates(PDO $pdo, array $filters = []): array

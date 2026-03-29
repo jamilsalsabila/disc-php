@@ -49,8 +49,7 @@ const ROLE_GROUPS = [
     'MANAGEMENT' => ['MANAGER', 'BACK_OFFICE'],
 ];
 
-const PRIMARY_MIN_FIT = 55;
-const CROSS_GROUP_MIN_FIT = 60;
+const PRIMARY_MIN_FIT = 6;
 
 const DISC_LABELS = [
     'D' => 'Dominance',
@@ -69,11 +68,6 @@ function detect_role_group(?string $preferredRoleLabel): string
         return 'MANAGEMENT';
     }
     return 'SERVICE';
-}
-
-function opposite_role_group(string $group): string
-{
-    return $group === 'SERVICE' ? 'MANAGEMENT' : 'SERVICE';
 }
 
 function role_group_label(string $group): string
@@ -97,7 +91,7 @@ function normalize_role_key(?string $preferredRoleLabel): ?string
     return ROLE_LABEL_TO_KEY[$preferredRoleLabel] ?? null;
 }
 
-function calculate_role_fit_percent(array $compositeCounts, array $weights, int $totalQuestions): int
+function calculate_role_fit_score_10(array $compositeCounts, array $weights, int $totalQuestions): int
 {
     $maxTraitScore = max(1, $totalQuestions * 2);
     $d = ($compositeCounts['D'] ?? 0) / $maxTraitScore;
@@ -106,7 +100,14 @@ function calculate_role_fit_percent(array $compositeCounts, array $weights, int 
     $c = ($compositeCounts['C'] ?? 0) / $maxTraitScore;
 
     $score = ($d * $weights['D']) + ($i * $weights['I']) + ($s * $weights['S']) + ($c * $weights['C']);
-    return (int) round($score * 100);
+    $score10 = (int) round($score * 10);
+    if ($score10 < 1) {
+        return 1;
+    }
+    if ($score10 > 10) {
+        return 10;
+    }
+    return $score10;
 }
 
 function rank_disc_traits(array $discCounts): array
@@ -136,26 +137,18 @@ function generate_reason(string $recommendation, array $mostCounts, array $least
     }
     $topTraits = implode(' & ', $topParts);
 
-    if (!empty($meta['cross_group_role']) && !empty($meta['selected_group']) && !empty($meta['cross_group'])) {
-        $selectedGroupLabel = role_group_label($meta['selected_group']);
-        $crossGroupLabel = role_group_label($meta['cross_group']);
-        $crossRoleLabel = ROLE_PROFILES[$meta['cross_group_role']]['label'] ?? $meta['cross_group_role'];
-        return "Di grup pilihan {$selectedGroupLabel}, kandidat belum memenuhi ambang rekomendasi. Namun pada evaluasi lintas grup {$crossGroupLabel}, kandidat paling cocok pada role {$crossRoleLabel} berdasarkan kombinasi trait {$topTraits}.";
-    }
-
     if ($recommendation === 'TIDAK_DIREKOMENDASIKAN') {
         $selectedGroupLabel = !empty($meta['selected_group']) ? role_group_label($meta['selected_group']) : 'grup awal';
-        $crossGroupLabel = !empty($meta['cross_group']) ? role_group_label($meta['cross_group']) : 'grup alternatif';
         $avoid = implode(' & ', array_map(static function ($t) {
             return DISC_LABELS[$t] ?? $t;
         }, $avoidedTraits));
-        return "Profil DISC menunjukkan kekuatan pada {$topTraits}, namun kecocokan minimum belum terpenuhi baik pada {$selectedGroupLabel} maupun {$crossGroupLabel}. Area yang paling sering dihindari: {$avoid}.";
+        return "Profil DISC menunjukkan kekuatan pada {$topTraits}, namun kecocokan minimum belum terpenuhi pada {$selectedGroupLabel}. Area yang paling sering dihindari: {$avoid}.";
     }
 
     $recLabel = ROLE_PROFILES[$recommendation]['label'] ?? $recommendation;
     $scoreParts = [];
     foreach ($roleScores as $k => $v) {
-        $scoreParts[] = (ROLE_PROFILES[$k]['label'] ?? $k) . ': ' . $v . '%';
+        $scoreParts[] = (ROLE_PROFILES[$k]['label'] ?? $k) . ': ' . $v . '/10';
     }
 
     $preferredRoleKey = normalize_role_key($preferredRoleLabel);
@@ -194,14 +187,12 @@ function evaluate_candidate(array $answersByQuestion, ?string $preferredRoleLabe
     ];
 
     $group = detect_role_group($preferredRoleLabel);
-    $crossGroup = opposite_role_group($group);
     $groupRoleKeys = ROLE_GROUPS[$group];
-    $crossRoleKeys = ROLE_GROUPS[$crossGroup];
 
     $roleScores = [];
     foreach (array_keys(ROLE_PROFILES) as $roleKey) {
         $profile = ROLE_PROFILES[$roleKey];
-        $fit = calculate_role_fit_percent($compositeCounts, $profile['weights'], $totalQuestions);
+        $fit = calculate_role_fit_score_10($compositeCounts, $profile['weights'], $totalQuestions);
         $roleScores[$roleKey] = $fit;
     }
 
@@ -216,7 +207,6 @@ function evaluate_candidate(array $answersByQuestion, ?string $preferredRoleLabe
     $recommendation = 'TIDAK_DIREKOMENDASIKAN';
     $reasonMeta = [
         'selected_group' => $group,
-        'cross_group' => $crossGroup,
     ];
 
     if (!empty($eligibleRoles)) {
@@ -224,22 +214,6 @@ function evaluate_candidate(array $answersByQuestion, ?string $preferredRoleLabe
             return ($roleScores[$b] ?? 0) <=> ($roleScores[$a] ?? 0);
         });
         $recommendation = $eligibleRoles[0];
-    } else {
-        $crossEligibleRoles = [];
-        foreach ($crossRoleKeys as $roleKey) {
-            $profile = ROLE_PROFILES[$roleKey];
-            if (($roleScores[$roleKey] ?? 0) >= CROSS_GROUP_MIN_FIT && passes_gate($mostCounts, $profile['gates'])) {
-                $crossEligibleRoles[] = $roleKey;
-            }
-        }
-
-        if (!empty($crossEligibleRoles)) {
-            usort($crossEligibleRoles, static function ($a, $b) use ($roleScores) {
-                return ($roleScores[$b] ?? 0) <=> ($roleScores[$a] ?? 0);
-            });
-            $recommendation = $crossEligibleRoles[0];
-            $reasonMeta['cross_group_role'] = $recommendation;
-        }
     }
 
     return [

@@ -8,6 +8,7 @@
   <div class="floating-timer">
     <span>Sisa Waktu</span>
     <strong id="countdown">10:00</strong>
+    <small id="autosave-status" class="autosave-status is-idle">Autosave aktif</small>
   </div>
 
   <form method="post" action="<?= h(route_path('/submit')) ?>" id="disc-form">
@@ -33,6 +34,12 @@
             </tr>
           </thead>
           <tbody>
+            <?php
+              $qid = (int) $question['id'];
+              $prefill = $draft_answers[$qid] ?? [];
+              $prefillMost = $prefill['most']['optionCode'] ?? '';
+              $prefillLeast = $prefill['least']['optionCode'] ?? '';
+            ?>
             <?php foreach ($question['options'] as $option): ?>
               <tr>
                 <td>
@@ -40,10 +47,10 @@
                   <?= h($option['text']) ?>
                 </td>
                 <td class="pick-col">
-                  <input type="radio" name="q_<?= h((string) $question['id']) ?>_most" value="<?= h($option['code']) ?>" required>
+                  <input type="radio" name="q_<?= h((string) $question['id']) ?>_most" value="<?= h($option['code']) ?>" required <?= ((string) $prefillMost === (string) $option['code']) ? 'checked' : '' ?>>
                 </td>
                 <td class="pick-col">
-                  <input type="radio" name="q_<?= h((string) $question['id']) ?>_least" value="<?= h($option['code']) ?>" required>
+                  <input type="radio" name="q_<?= h((string) $question['id']) ?>_least" value="<?= h($option['code']) ?>" required <?= ((string) $prefillLeast === (string) $option['code']) ? 'checked' : '' ?>>
                 </td>
               </tr>
             <?php endforeach; ?>

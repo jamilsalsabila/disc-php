@@ -102,6 +102,9 @@ return [
     'base_path' => detect_base_path(),
     'test_duration_minutes' => (int) env('TEST_DURATION_MINUTES', 10),
     'min_completion_ratio' => (float) env('MIN_COMPLETION_RATIO', 0.8),
+    'timeout_sweep_every_seconds' => (int) env('TIMEOUT_SWEEP_EVERY_SECONDS', 20),
+    'timeout_sweep_limit' => (int) env('TIMEOUT_SWEEP_LIMIT', 200),
+    'auto_seed_questions' => strtolower((string) env('AUTO_SEED_QUESTIONS', 'false')) === 'true',
     'role_options' => [
         'Floor Crew ( Server, Runner, Housekeeping )',
         'Bar Crew',
@@ -110,7 +113,6 @@ return [
         'Back Office ( Admin )',
     ],
     'db_path' => dirname(__DIR__) . '/storage/disc_app.sqlite',
-    'question_source' => dirname(__DIR__) . '/server-beverage-cook.txt',
     'question_sources_by_role' => [
         'Floor Crew ( Server, Runner, Housekeeping )' => dirname(__DIR__) . '/server-beverage-cook.txt',
         'Bar Crew' => dirname(__DIR__) . '/server-beverage-cook.txt',

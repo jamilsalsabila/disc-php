@@ -4,6 +4,8 @@
   const isMobile = window.matchMedia('(max-width: 860px)').matches;
   const filterForm = document.getElementById('hr-filter-form');
   const tableBody = document.getElementById('candidate-table-body');
+  const timeoutRefreshBtn = document.getElementById('timeout-refresh-btn');
+  let toastStack = null;
 
   let roleChart;
   let discChart;
@@ -188,7 +190,7 @@
     }
 
     if (!candidates.length) {
-      tableBody.innerHTML = '<tr><td colspan="6">Belum ada data kandidat.</td></tr>';
+      tableBody.innerHTML = '<tr><td colspan="7">Belum ada data kandidat.</td></tr>';
       return;
     }
 
@@ -202,6 +204,7 @@
           </td>
           <td>${escapeHtml(candidate.selected_role)}</td>
           <td>${escapeHtml(mapRec(candidate.recommendation))}</td>
+          <td>${escapeHtml(candidate.interview_recommendation || '-')}</td>
           <td>${escapeHtml(candidate.status)}</td>
           <td>
             <div class="table-actions">
@@ -220,6 +223,33 @@
     renderCandidateTable(payload.candidates || []);
     renderRoleChart((payload.stats && payload.stats.roleDistribution) || []);
     renderDiscChart((payload.stats && payload.stats.avgDisc) || {});
+  }
+
+  function getToastStack() {
+    if (toastStack) {
+      return toastStack;
+    }
+    toastStack = document.createElement('div');
+    toastStack.className = 'toast-stack';
+    document.body.appendChild(toastStack);
+    return toastStack;
+  }
+
+  function showToast(message, type = 'info') {
+    const stack = getToastStack();
+    const toast = document.createElement('div');
+    toast.className = `toast-item is-${type}`;
+    toast.textContent = message;
+    stack.appendChild(toast);
+    requestAnimationFrame(() => {
+      toast.classList.add('is-show');
+    });
+    setTimeout(() => {
+      toast.classList.remove('is-show');
+      setTimeout(() => {
+        toast.remove();
+      }, 200);
+    }, 2400);
   }
 
   async function fetchAndRender() {
@@ -316,11 +346,51 @@
         return;
       }
       if (!response.ok) {
-        window.alert('Gagal menghapus data kandidat. Silakan coba lagi.'); // eslint-disable-line no-alert
+        showToast('Gagal menghapus data kandidat. Silakan coba lagi.', 'error');
         return;
       }
 
+      showToast('Data kandidat berhasil dihapus.', 'success');
       await fetchAndRender();
+    });
+  }
+
+  function setupTimeoutRefreshHandler() {
+    if (!timeoutRefreshBtn) return;
+    timeoutRefreshBtn.addEventListener('click', async () => {
+      if (timeoutRefreshBtn.disabled) {
+        return;
+      }
+
+      timeoutRefreshBtn.disabled = true;
+      showToast('Memproses refresh status...', 'info');
+
+      try {
+        const response = await fetch(withBase('/hr/api/refresh-timeouts'), {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            'X-CSRF-Token': window.csrfToken || ''
+          }
+        });
+
+        if (response.status === 401) {
+          window.location.href = withBase('/hr/login');
+          return;
+        }
+
+        if (!response.ok) {
+          throw new Error('Request failed');
+        }
+
+        const payload = await response.json();
+        showToast(payload.message || 'Status berhasil diperbarui.', 'success');
+        await fetchAndRender();
+      } catch (error) {
+        showToast('Gagal update status. Coba lagi.', 'error');
+      } finally {
+        timeoutRefreshBtn.disabled = false;
+      }
     });
   }
 
@@ -329,4 +399,5 @@
   attachRowHandlers();
   setupLiveFilters();
   setupDeleteHandlers();
+  setupTimeoutRefreshHandler();
 })();
