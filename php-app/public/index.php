@@ -677,6 +677,28 @@ function normalize_per_page_param($raw): int
     return in_array($perPage, $allowed, true) ? $perPage : 20;
 }
 
+function normalize_essay_sort_by($raw): string
+{
+    $allowed = ['default', 'group', 'order', 'status', 'updated', 'id'];
+    $sortBy = trim((string) $raw);
+    return in_array($sortBy, $allowed, true) ? $sortBy : 'default';
+}
+
+function normalize_sort_dir($raw): string
+{
+    $dir = strtolower(trim((string) $raw));
+    return $dir === 'desc' ? 'desc' : 'asc';
+}
+
+function build_essay_next_order_map(PDO $pdo, array $groups): array
+{
+    $map = [];
+    foreach ($groups as $group) {
+        $map[(string) $group] = get_next_essay_question_order($pdo, (string) $group);
+    }
+    return $map;
+}
+
 if ($method === 'GET' && $path === '/') {
     $candidate = ensure_candidate_session($pdo);
     if ($candidate && $candidate['status'] === 'in_progress') {
@@ -1791,11 +1813,31 @@ if ($method === 'GET' && $path === '/hr/essay-questions') {
     $flashType = $_SESSION['essay_questions_flash_type'] ?? 'info';
     unset($_SESSION['essay_questions_flash_message'], $_SESSION['essay_questions_flash_type']);
 
+    $page = normalize_page_param($_GET['page'] ?? 1);
+    $perPage = normalize_per_page_param($_GET['per_page'] ?? 20);
+    $sortBy = normalize_essay_sort_by($_GET['sort_by'] ?? 'default');
+    $sortDir = normalize_sort_dir($_GET['sort_dir'] ?? 'asc');
+    $total = count_essay_questions($pdo, true, $groupFilter !== '' ? $groupFilter : null);
+    $totalPages = max(1, (int) ceil($total / $perPage));
+    if ($page > $totalPages) {
+        $page = $totalPages;
+    }
+
     render('hr/essay-questions', [
         'page_title' => 'Kelola Soal Esai',
-        'essay_questions' => list_essay_questions($pdo, true, $groupFilter !== '' ? $groupFilter : null),
+        'essay_questions' => list_essay_questions_paginated($pdo, true, $groupFilter !== '' ? $groupFilter : null, $page, $perPage, $sortBy, $sortDir),
         'essay_group_options' => $essayGroupOptions,
         'group_filter' => $groupFilter,
+        'sort_by' => $sortBy,
+        'sort_dir' => $sortDir,
+        'pagination' => [
+            'page' => $page,
+            'per_page' => $perPage,
+            'total' => $total,
+            'total_pages' => $totalPages,
+            'from' => $total > 0 ? (($page - 1) * $perPage) + 1 : 0,
+            'to' => $total > 0 ? min($total, $page * $perPage) : 0,
+        ],
         'flash_message' => is_string($flashMessage) ? $flashMessage : null,
         'flash_type' => is_string($flashType) ? $flashType : 'info',
     ]);
@@ -1815,6 +1857,8 @@ if ($method === 'GET' && $path === '/hr/essay-questions/new') {
         'form_title' => 'Tambah Soal Esai',
         'action_url' => route_path('/hr/essay-questions/new'),
         'essay_group_options' => $essayGroupOptions,
+        'auto_order_enabled' => true,
+        'next_order_map' => build_essay_next_order_map($pdo, $essayGroupOptions),
         'values' => [
             'role_group' => $group,
             'order' => get_next_essay_question_order($pdo, $group),
@@ -1848,6 +1892,8 @@ if ($method === 'POST' && $path === '/hr/essay-questions/new') {
             'form_title' => 'Tambah Soal Esai',
             'action_url' => route_path('/hr/essay-questions/new'),
             'essay_group_options' => $essayGroupOptions,
+            'auto_order_enabled' => true,
+            'next_order_map' => build_essay_next_order_map($pdo, $essayGroupOptions),
             'values' => $payload,
             'error_message' => 'Kelompok role wajib valid, urutan > 0, dan pertanyaan minimal 10 karakter.',
         ]);
@@ -1876,6 +1922,8 @@ if ($method === 'GET' && preg_match('#^/hr/essay-questions/(\d+)/edit$#', $path,
         'form_title' => 'Edit Soal Esai #' . $row['id'],
         'action_url' => route_path('/hr/essay-questions/' . $row['id'] . '/edit'),
         'essay_group_options' => $essayGroupOptions,
+        'auto_order_enabled' => false,
+        'next_order_map' => [],
         'values' => [
             'role_group' => (string) ($row['role_group'] ?? 'Manager'),
             'order' => (int) ($row['question_order'] ?? 0),
@@ -1909,6 +1957,8 @@ if ($method === 'POST' && preg_match('#^/hr/essay-questions/(\d+)/edit$#', $path
             'form_title' => 'Edit Soal Esai #' . (int) $m[1],
             'action_url' => route_path('/hr/essay-questions/' . (int) $m[1] . '/edit'),
             'essay_group_options' => $essayGroupOptions,
+            'auto_order_enabled' => false,
+            'next_order_map' => [],
             'values' => $payload,
             'error_message' => 'Kelompok role wajib valid, urutan > 0, dan pertanyaan minimal 10 karakter.',
         ]);

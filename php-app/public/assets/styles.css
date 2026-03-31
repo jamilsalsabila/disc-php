@@ -577,7 +577,12 @@ textarea {
 }
 
 .hr-essay-filter-grid {
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: 1.1fr 1fr 1fr auto auto auto;
+}
+
+.btn-secondary.is-disabled {
+  pointer-events: none;
+  opacity: 0.5;
 }
 
 .chart-grid,

@@ -13,7 +13,7 @@
 
       <label>
         Kelompok Role
-        <select name="role_group" required>
+        <select name="role_group" id="essay-role-group" required>
           <?php foreach (($essay_group_options ?? []) as $group): ?>
             <option value="<?= h($group) ?>" <?= (($values['role_group'] ?? 'Manager') === $group) ? 'selected' : '' ?>><?= h($group) ?></option>
           <?php endforeach; ?>
@@ -22,7 +22,7 @@
 
       <label>
         Urutan Soal
-        <input type="number" min="1" name="order" value="<?= h((string) ($values['order'] ?? '')) ?>" required>
+        <input type="number" min="1" name="order" id="essay-order-input" value="<?= h((string) ($values['order'] ?? '')) ?>" required>
       </label>
 
       <label>
@@ -47,3 +47,19 @@
     </form>
   </section>
 </main>
+<?php if (!empty($auto_order_enabled)): ?>
+  <script>
+    (function () {
+      const roleSelect = document.getElementById('essay-role-group');
+      const orderInput = document.getElementById('essay-order-input');
+      const nextOrderMap = <?= json_encode($next_order_map ?? [], JSON_UNESCAPED_UNICODE) ?>;
+      if (!roleSelect || !orderInput || !nextOrderMap) return;
+
+      roleSelect.addEventListener('change', function () {
+        const role = roleSelect.value || '';
+        const nextOrder = Number(nextOrderMap[role] || 1);
+        orderInput.value = String(nextOrder > 0 ? nextOrder : 1);
+      });
+    })();
+  </script>
+<?php endif; ?>

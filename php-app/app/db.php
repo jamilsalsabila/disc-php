@@ -714,7 +714,7 @@ function delete_question(PDO $pdo, int $id): bool
     return $stmt->rowCount() > 0;
 }
 
-function list_essay_questions(PDO $pdo, bool $includeInactive = true, ?string $roleGroup = null): array
+function build_essay_questions_filter_sql(bool $includeInactive = true, ?string $roleGroup = null): array
 {
     $conditions = [];
     $params = [];
@@ -729,10 +729,35 @@ function list_essay_questions(PDO $pdo, bool $includeInactive = true, ?string $r
     }
 
     $where = empty($conditions) ? '' : ('WHERE ' . implode(' AND ', $conditions));
-    $stmt = $pdo->prepare("SELECT * FROM essay_questions {$where} ORDER BY role_group ASC, question_order ASC, id ASC");
-    $stmt->execute($params);
-    $rows = $stmt->fetchAll();
+    return [$where, $params];
+}
 
+function build_essay_questions_order_sql(string $sortBy = 'default', string $sortDir = 'asc'): string
+{
+    $dir = strtolower($sortDir) === 'desc' ? 'DESC' : 'ASC';
+
+    switch ($sortBy) {
+        case 'group':
+            return "role_group {$dir}, question_order {$dir}, id {$dir}";
+        case 'order':
+            return "question_order {$dir}, role_group {$dir}, id {$dir}";
+        case 'status':
+            return "is_active {$dir}, role_group ASC, question_order ASC, id ASC";
+        case 'updated':
+            return "updated_at {$dir}, id {$dir}";
+        case 'id':
+            return "id {$dir}";
+        case 'default':
+        default:
+            if ($dir === 'DESC') {
+                return 'role_group DESC, question_order DESC, id DESC';
+            }
+            return 'role_group ASC, question_order ASC, id ASC';
+    }
+}
+
+function map_essay_questions_rows(array $rows): array
+{
     return array_map(static function (array $row): array {
         return [
             'id' => (int) $row['id'],
@@ -743,6 +768,46 @@ function list_essay_questions(PDO $pdo, bool $includeInactive = true, ?string $r
             'is_active' => (int) ($row['is_active'] ?? 0) === 1,
         ];
     }, $rows);
+}
+
+function count_essay_questions(PDO $pdo, bool $includeInactive = true, ?string $roleGroup = null): int
+{
+    [$where, $params] = build_essay_questions_filter_sql($includeInactive, $roleGroup);
+    $stmt = $pdo->prepare("SELECT COUNT(*) AS total FROM essay_questions {$where}");
+    $stmt->execute($params);
+    $row = $stmt->fetch();
+    return (int) ($row['total'] ?? 0);
+}
+
+function list_essay_questions(PDO $pdo, bool $includeInactive = true, ?string $roleGroup = null, string $sortBy = 'default', string $sortDir = 'asc'): array
+{
+    [$where, $params] = build_essay_questions_filter_sql($includeInactive, $roleGroup);
+    $orderBy = build_essay_questions_order_sql($sortBy, $sortDir);
+    $stmt = $pdo->prepare("SELECT * FROM essay_questions {$where} ORDER BY {$orderBy}");
+    $stmt->execute($params);
+    $rows = $stmt->fetchAll();
+
+    return map_essay_questions_rows($rows);
+}
+
+function list_essay_questions_paginated(PDO $pdo, bool $includeInactive = true, ?string $roleGroup = null, int $page = 1, int $perPage = 20, string $sortBy = 'default', string $sortDir = 'asc'): array
+{
+    $page = max(1, $page);
+    $perPage = max(1, min(100, $perPage));
+    $offset = ($page - 1) * $perPage;
+
+    [$where, $params] = build_essay_questions_filter_sql($includeInactive, $roleGroup);
+    $orderBy = build_essay_questions_order_sql($sortBy, $sortDir);
+    $stmt = $pdo->prepare("SELECT * FROM essay_questions {$where} ORDER BY {$orderBy} LIMIT :limit OFFSET :offset");
+    foreach ($params as $k => $v) {
+        $stmt->bindValue($k, $v);
+    }
+    $stmt->bindValue(':limit', $perPage, PDO::PARAM_INT);
+    $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+    $stmt->execute();
+    $rows = $stmt->fetchAll();
+
+    return map_essay_questions_rows($rows);
 }
 
 function get_essay_question_by_id(PDO $pdo, int $id): ?array

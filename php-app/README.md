@@ -19,6 +19,8 @@ Versi produksi aplikasi asesmen DISC berbasis PHP + SQLite.
 - CRUD soal manual.
 - CRUD bank soal esai (manual) untuk persiapan asesmen tulisan.
   - Kelompok soal esai: `Manager`, `Back office`, `Kitchen`, `Bar`, `Floor`.
+  - Pada form tambah soal esai, `Urutan Soal` otomatis menyesuaikan urutan berikutnya berdasarkan kelompok role yang dipilih.
+  - Halaman `Kelola Soal Esai` mendukung pagination (`10/20/50/100`) dan sort (default, urutan, kelompok, status, update, id).
 - Bulk upload soal via CSV:
   - download template,
   - preview sebelum import,

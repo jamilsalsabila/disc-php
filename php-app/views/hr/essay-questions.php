@@ -31,6 +31,27 @@
           <option value="<?= h($group) ?>" <?= (($group_filter ?? '') === $group) ? 'selected' : '' ?>><?= h($group) ?></option>
         <?php endforeach; ?>
       </select>
+      <select name="sort_by">
+        <?php $sortBy = (string) ($sort_by ?? 'default'); ?>
+        <option value="default" <?= $sortBy === 'default' ? 'selected' : '' ?>>Urutan Default</option>
+        <option value="order" <?= $sortBy === 'order' ? 'selected' : '' ?>>Urut Soal</option>
+        <option value="group" <?= $sortBy === 'group' ? 'selected' : '' ?>>Kelompok Role</option>
+        <option value="status" <?= $sortBy === 'status' ? 'selected' : '' ?>>Status</option>
+        <option value="updated" <?= $sortBy === 'updated' ? 'selected' : '' ?>>Terakhir Update</option>
+        <option value="id" <?= $sortBy === 'id' ? 'selected' : '' ?>>ID</option>
+      </select>
+      <select name="sort_dir">
+        <?php $sortDir = (string) ($sort_dir ?? 'asc'); ?>
+        <option value="asc" <?= $sortDir === 'asc' ? 'selected' : '' ?>>A-Z / Kecil ke Besar</option>
+        <option value="desc" <?= $sortDir === 'desc' ? 'selected' : '' ?>>Z-A / Besar ke Kecil</option>
+      </select>
+      <select name="per_page">
+        <?php $perPage = (int) (($pagination['per_page'] ?? 20)); ?>
+        <?php foreach ([10, 20, 50, 100] as $n): ?>
+          <option value="<?= h((string) $n) ?>" <?= ($perPage === $n) ? 'selected' : '' ?>><?= h((string) $n) ?> / halaman</option>
+        <?php endforeach; ?>
+      </select>
+      <input type="hidden" name="page" value="1">
       <button type="submit" class="btn-secondary">Filter</button>
       <a href="<?= h(route_path('/hr/essay-questions')) ?>" class="btn-secondary">Reset</a>
     </form>
@@ -86,5 +107,37 @@
         <?php endif; ?>
       </tbody>
     </table>
+
+    <?php
+      $pg = $pagination ?? ['page' => 1, 'total_pages' => 1, 'total' => 0, 'from' => 0, 'to' => 0, 'per_page' => 20];
+      $currPage = (int) ($pg['page'] ?? 1);
+      $totalPages = (int) ($pg['total_pages'] ?? 1);
+      $baseQuery = [];
+      if (($group_filter ?? '') !== '') {
+          $baseQuery['group'] = (string) $group_filter;
+      }
+      if (($sort_by ?? 'default') !== 'default') {
+          $baseQuery['sort_by'] = (string) $sort_by;
+      }
+      if (($sort_dir ?? 'asc') !== 'asc') {
+          $baseQuery['sort_dir'] = (string) $sort_dir;
+      }
+      $baseQuery['per_page'] = (int) ($pg['per_page'] ?? 20);
+      $prevQuery = $baseQuery;
+      $prevQuery['page'] = max(1, $currPage - 1);
+      $nextQuery = $baseQuery;
+      $nextQuery['page'] = min($totalPages, $currPage + 1);
+    ?>
+    <div class="dashboard-pagination">
+      <div class="dashboard-pagination-meta">
+        Menampilkan <?= h((string) ((int) ($pg['from'] ?? 0))) ?>-<?= h((string) ((int) ($pg['to'] ?? 0))) ?>
+        dari <?= h((string) ((int) ($pg['total'] ?? 0))) ?> soal esai
+      </div>
+      <div class="dashboard-pagination-controls">
+        <a href="<?= h(route_path('/hr/essay-questions?' . http_build_query($prevQuery))) ?>" class="btn-secondary <?= $currPage <= 1 ? 'is-disabled' : '' ?>" <?= $currPage <= 1 ? 'aria-disabled="true" tabindex="-1"' : '' ?>>Sebelumnya</a>
+        <span class="pagination-page-label">Halaman <?= h((string) $currPage) ?> / <?= h((string) $totalPages) ?></span>
+        <a href="<?= h(route_path('/hr/essay-questions?' . http_build_query($nextQuery))) ?>" class="btn-secondary <?= $currPage >= $totalPages ? 'is-disabled' : '' ?>" <?= $currPage >= $totalPages ? 'aria-disabled="true" tabindex="-1"' : '' ?>>Berikutnya</a>
+      </div>
+    </div>
   </section>
 </main>
