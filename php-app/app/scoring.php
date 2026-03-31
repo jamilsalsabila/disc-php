@@ -3,50 +3,55 @@
 declare(strict_types=1);
 
 const ROLE_PROFILES = [
-    'FLOOR_CREW' => [
-        'label' => 'Floor Crew ( Server, Runner, Housekeeping )',
-        'weights' => ['D' => 0.1, 'I' => 0.45, 'S' => 0.3, 'C' => 0.15],
-        'gates' => ['I' => 6, 'S' => 4],
-    ],
-    'BAR_CREW' => [
-        'label' => 'Bar Crew',
-        'weights' => ['D' => 0.2, 'I' => 0.3, 'S' => 0.15, 'C' => 0.35],
-        'gates' => ['I' => 5, 'C' => 5],
-    ],
-    'KITCHEN_CREW' => [
-        'label' => 'Kitchen Crew ( Cook, Cook Helper, Steward )',
-        'weights' => ['D' => 0.25, 'I' => 0.1, 'S' => 0.2, 'C' => 0.45],
-        'gates' => ['D' => 5, 'C' => 7],
-    ],
-    'MANAGER' => [
-        'label' => 'Manager',
-        'weights' => ['D' => 0.4, 'I' => 0.3, 'S' => 0.15, 'C' => 0.15],
-        'gates' => ['D' => 6, 'I' => 5],
-    ],
-    'BACK_OFFICE' => [
-        'label' => 'Back Office ( Admin )',
-        'weights' => ['D' => 0.1, 'I' => 0.1, 'S' => 0.3, 'C' => 0.5],
-        'gates' => ['S' => 5, 'C' => 7],
-    ],
+    'MANAGER' => ['label' => 'Manager', 'ideal' => ['D', 'I'], 'category' => 'LEADER'],
+    'BACK_OFFICE' => ['label' => 'Back Office', 'ideal' => ['C', 'S'], 'category' => 'ADMIN_KITCHEN'],
+    'HEAD_KITCHEN' => ['label' => 'Head Kitchen', 'ideal' => ['D', 'C'], 'category' => 'ADMIN_KITCHEN'],
+    'HEAD_BAR' => ['label' => 'Head Bar', 'ideal' => ['D', 'I'], 'category' => 'SERVICE'],
+    'FLOOR_CAPTAIN' => ['label' => 'Floor Captain', 'ideal' => ['I', 'D'], 'category' => 'SERVICE'],
+    'COOK' => ['label' => 'Cook', 'ideal' => ['C', 'S'], 'category' => 'ADMIN_KITCHEN'],
+    'COOK_HELPER' => ['label' => 'Cook Helper', 'ideal' => ['S', 'C'], 'category' => 'SUPPORT'],
+    'STEWARD' => ['label' => 'Steward', 'ideal' => ['S', 'C'], 'category' => 'SUPPORT'],
+    'MIXOLOGIST' => ['label' => 'Mixologist', 'ideal' => ['I', 'D'], 'category' => 'SERVICE'],
+    'SERVER' => ['label' => 'Server', 'ideal' => ['I', 'S'], 'category' => 'SERVICE'],
+    'HOUSEKEEPING' => ['label' => 'Housekeeping', 'ideal' => ['S', 'C'], 'category' => 'SUPPORT'],
 ];
 
 const ROLE_LABEL_TO_KEY = [
-    'Floor Crew ( Server, Runner, Housekeeping )' => 'FLOOR_CREW',
-    'Bar Crew' => 'BAR_CREW',
-    'Kitchen Crew ( Cook, Cook Helper, Steward )' => 'KITCHEN_CREW',
     'Manager' => 'MANAGER',
+    'Back Office' => 'BACK_OFFICE',
+    'Head Kitchen' => 'HEAD_KITCHEN',
+    'Head Bar' => 'HEAD_BAR',
+    'Floor Captain' => 'FLOOR_CAPTAIN',
+    'Cook' => 'COOK',
+    'Cook Helper' => 'COOK_HELPER',
+    'Steward' => 'STEWARD',
+    'Mixologist' => 'MIXOLOGIST',
+    'Server' => 'SERVER',
+    'Housekeeping' => 'HOUSEKEEPING',
+    // Legacy aliases
     'Back Office ( Admin )' => 'BACK_OFFICE',
-    // Legacy aliases (agar data lama tetap kebaca)
-    'Server Specialist' => 'FLOOR_CREW',
-    'Beverage Specialist' => 'BAR_CREW',
-    'Senior Cook' => 'KITCHEN_CREW',
+    'Server Specialist' => 'SERVER',
+    'Beverage Specialist' => 'MIXOLOGIST',
+    'Senior Cook' => 'COOK',
     'Asisten Manager' => 'MANAGER',
     'Admin Operasional' => 'BACK_OFFICE',
+    'Floor Crew ( Server, Runner, Housekeeping )' => 'SERVER',
+    'Bar Crew' => 'MIXOLOGIST',
+    'Kitchen Crew ( Cook, Cook Helper, Steward )' => 'COOK',
 ];
 
-const ROLE_GROUPS = [
-    'SERVICE' => ['FLOOR_CREW', 'BAR_CREW', 'KITCHEN_CREW'],
-    'MANAGEMENT' => ['MANAGER', 'BACK_OFFICE'],
+const ROLE_KEYS = [
+    'MANAGER',
+    'BACK_OFFICE',
+    'HEAD_KITCHEN',
+    'HEAD_BAR',
+    'FLOOR_CAPTAIN',
+    'COOK',
+    'COOK_HELPER',
+    'STEWARD',
+    'MIXOLOGIST',
+    'SERVER',
+    'HOUSEKEEPING',
 ];
 
 const PRIMARY_MIN_FIT = 6;
@@ -58,25 +63,12 @@ const DISC_LABELS = [
     'C' => 'Conscientiousness',
 ];
 
-function detect_role_group(?string $preferredRoleLabel): string
-{
-    $key = normalize_role_key($preferredRoleLabel);
-    if ($key && in_array($key, ROLE_GROUPS['SERVICE'], true)) {
-        return 'SERVICE';
-    }
-    if ($key && in_array($key, ROLE_GROUPS['MANAGEMENT'], true)) {
-        return 'MANAGEMENT';
-    }
-    return 'SERVICE';
-}
-
-function role_group_label(string $group): string
-{
-    if ($group === 'SERVICE') {
-        return 'Service (Floor Crew / Bar Crew / Kitchen Crew)';
-    }
-    return 'Management (Manager / Back Office)';
-}
+const MIN_DIMENSION_BY_TRAIT = [
+    'D' => 14,
+    'I' => 16,
+    'S' => 14,
+    'C' => 16,
+];
 
 function normalize_role_key(?string $preferredRoleLabel): ?string
 {
@@ -91,77 +83,132 @@ function normalize_role_key(?string $preferredRoleLabel): ?string
     return ROLE_LABEL_TO_KEY[$preferredRoleLabel] ?? null;
 }
 
-function calculate_role_fit_score_10(array $compositeCounts, array $weights, int $totalQuestions): int
-{
-    $maxTraitScore = max(1, $totalQuestions * 2);
-    $d = ($compositeCounts['D'] ?? 0) / $maxTraitScore;
-    $i = ($compositeCounts['I'] ?? 0) / $maxTraitScore;
-    $s = ($compositeCounts['S'] ?? 0) / $maxTraitScore;
-    $c = ($compositeCounts['C'] ?? 0) / $maxTraitScore;
-
-    $score = ($d * $weights['D']) + ($i * $weights['I']) + ($s * $weights['S']) + ($c * $weights['C']);
-    $score10 = (int) round($score * 10);
-    if ($score10 < 1) {
-        return 1;
-    }
-    if ($score10 > 10) {
-        return 10;
-    }
-    return $score10;
-}
-
 function rank_disc_traits(array $discCounts): array
 {
     arsort($discCounts);
     return array_keys($discCounts);
 }
 
-function passes_gate(array $mostCounts, array $gates): bool
+function role_fit_score_10(string $roleKey, array $discRawScores): int
 {
-    foreach ($gates as $trait => $min) {
-        if (($mostCounts[$trait] ?? 0) < $min) {
-            return false;
-        }
+    $profile = ROLE_PROFILES[$roleKey];
+    $ideal = $profile['ideal'];
+    $primary = $ideal[0] ?? 'D';
+    $secondary = $ideal[1] ?? 'I';
+
+    $primaryRaw = (int) ($discRawScores[$primary] ?? 0);
+    $secondaryRaw = (int) ($discRawScores[$secondary] ?? 0);
+    $base = (int) round(($primaryRaw + $secondaryRaw) / 4);
+    $score = max(1, min(10, $base));
+
+    $minPrimary = MIN_DIMENSION_BY_TRAIT[$primary] ?? 14;
+    $minSecondary = MIN_DIMENSION_BY_TRAIT[$secondary] ?? 14;
+    if ($primaryRaw < $minPrimary) {
+        $score -= 1;
     }
-    return true;
+    if ($secondaryRaw < $minSecondary) {
+        $score -= 1;
+    }
+    return max(1, min(10, $score));
 }
 
-function generate_reason(string $recommendation, array $mostCounts, array $leastCounts, array $compositeCounts, array $roleScores, ?string $preferredRoleLabel, array $meta = []): string
+function detect_red_flags(string $roleKey, array $discRawScores): array
 {
-    $rankedTraits = rank_disc_traits($compositeCounts);
-    $avoidedTraits = array_slice(rank_disc_traits($leastCounts), 0, 2);
+    $flags = [];
+    $d = (int) ($discRawScores['D'] ?? 0);
+    $i = (int) ($discRawScores['I'] ?? 0);
+    $s = (int) ($discRawScores['S'] ?? 0);
+    $c = (int) ($discRawScores['C'] ?? 0);
 
-    $topParts = [];
-    foreach (array_slice($rankedTraits, 0, 2) as $t) {
-        $topParts[] = sprintf('%s (Most %d, Least %d)', DISC_LABELS[$t], $mostCounts[$t] ?? 0, $leastCounts[$t] ?? 0);
+    if ($d < 10 && $i < 10 && $s < 10 && $c < 10) {
+        $flags[] = ['level' => 'reject', 'message' => 'Semua dimensi DISC di bawah 10 (auto reject).'];
     }
-    $topTraits = implode(' & ', $topParts);
+
+    if (in_array($roleKey, ['BACK_OFFICE', 'HEAD_KITCHEN', 'COOK'], true) && $c < 12) {
+        $flags[] = ['level' => 'reject', 'message' => 'C < 12 untuk role Admin/Kitchen (risiko ketelitian & SOP).'];
+    }
+    if ($roleKey === 'MANAGER' && $d < 12) {
+        $flags[] = ['level' => 'reject', 'message' => 'D < 12 untuk role Manager (risiko ketegasan & kecepatan keputusan).'];
+    }
+    if ($roleKey === 'MANAGER' && $i < 12) {
+        $flags[] = ['level' => 'reject', 'message' => 'I < 12 untuk role Manager (risiko komunikasi & pengaruh tim).'];
+    }
+    if (in_array($roleKey, ['SERVER', 'MIXOLOGIST', 'HEAD_BAR', 'FLOOR_CAPTAIN'], true) && $i < 12) {
+        $flags[] = ['level' => 'reject', 'message' => 'I < 12 untuk role Service/Bar (risiko komunikasi customer).'];
+    }
+    if (in_array($roleKey, ['HOUSEKEEPING', 'STEWARD', 'COOK_HELPER'], true) && $s < 12) {
+        $flags[] = ['level' => 'reject', 'message' => 'S < 12 untuk role Support (risiko kestabilan rutinitas).'];
+    }
+
+    if (in_array($roleKey, ['MANAGER', 'HEAD_KITCHEN', 'HEAD_BAR', 'FLOOR_CAPTAIN'], true) && $d > 22 && $s < 12) {
+        $flags[] = ['level' => 'warning', 'message' => 'D > 22 dan S < 12 (risiko terlalu keras/tidak sabar).'];
+    }
+    if (in_array($roleKey, ['SERVER', 'MIXOLOGIST', 'HEAD_BAR', 'FLOOR_CAPTAIN'], true) && $i > 22 && $c < 12) {
+        $flags[] = ['level' => 'warning', 'message' => 'I > 22 dan C < 12 (risiko kurang teliti).'];
+    }
+    if (in_array($roleKey, ['HEAD_KITCHEN', 'COOK', 'BACK_OFFICE'], true) && $c > 22 && $d < 10) {
+        $flags[] = ['level' => 'warning', 'message' => 'C > 22 dan D < 10 (risiko lambat saat pressure).'];
+    }
+    if (in_array($roleKey, ['HOUSEKEEPING', 'STEWARD', 'COOK_HELPER'], true) && $s > 22 && $d < 10) {
+        $flags[] = ['level' => 'warning', 'message' => 'S > 22 dan D < 10 (risiko pasif/kurang inisiatif).'];
+    }
+
+    return $flags;
+}
+
+function interview_bucket_label(int $score10): string
+{
+    if ($score10 >= 8) {
+        return 'Strong Hire';
+    }
+    if ($score10 >= 7) {
+        return 'Hire';
+    }
+    if ($score10 >= 6) {
+        return 'Consider';
+    }
+    return 'Reject';
+}
+
+function generate_reason(string $recommendation, array $mostCounts, array $leastCounts, array $discRawScores, array $roleScores, ?string $preferredRoleLabel, array $meta = []): string
+{
+    $rankedTraits = rank_disc_traits($discRawScores);
+    $dominant = $rankedTraits[0] ?? 'D';
+    $secondary = $rankedTraits[1] ?? 'I';
+    $dominantLabel = DISC_LABELS[$dominant] ?? $dominant;
+    $secondaryLabel = DISC_LABELS[$secondary] ?? $secondary;
+
+    $discText = sprintf(
+        'Skor DISC (raw): D=%d, I=%d, S=%d, C=%d.',
+        (int) ($discRawScores['D'] ?? 0),
+        (int) ($discRawScores['I'] ?? 0),
+        (int) ($discRawScores['S'] ?? 0),
+        (int) ($discRawScores['C'] ?? 0)
+    );
 
     if ($recommendation === 'TIDAK_DIREKOMENDASIKAN') {
-        $selectedGroupLabel = !empty($meta['selected_group']) ? role_group_label($meta['selected_group']) : 'grup awal';
-        $avoid = implode(' & ', array_map(static function ($t) {
-            return DISC_LABELS[$t] ?? $t;
-        }, $avoidedTraits));
-        return "Profil DISC menunjukkan kekuatan pada {$topTraits}, namun kecocokan minimum belum terpenuhi pada {$selectedGroupLabel}. Area yang paling sering dihindari: {$avoid}.";
+        return "Dominan {$dominantLabel} dengan secondary {$secondaryLabel}. {$discText} Kandidat belum memenuhi syarat minimum kelayakan role.";
     }
 
     $recLabel = ROLE_PROFILES[$recommendation]['label'] ?? $recommendation;
-    $scoreParts = [];
-    foreach ($roleScores as $k => $v) {
-        $scoreParts[] = (ROLE_PROFILES[$k]['label'] ?? $k) . ': ' . $v . '/10';
+    $recScore = (int) ($roleScores[$recommendation] ?? 0);
+    $bucket = interview_bucket_label($recScore);
+    $warningText = '';
+    $warnings = $meta['warnings'] ?? [];
+    if (!empty($warnings)) {
+        $warningText = ' Warning: ' . implode(' | ', array_map(static function ($w) {
+            return (string) ($w['message'] ?? '');
+        }, $warnings)) . '.';
     }
 
     $preferredRoleKey = normalize_role_key($preferredRoleLabel);
-    $preferredDisplay = $preferredRoleKey && isset(ROLE_PROFILES[$preferredRoleKey])
-        ? ROLE_PROFILES[$preferredRoleKey]['label']
-        : $preferredRoleLabel;
-
+    $preferredDisplay = $preferredRoleKey && isset(ROLE_PROFILES[$preferredRoleKey]) ? ROLE_PROFILES[$preferredRoleKey]['label'] : $preferredRoleLabel;
     $preferredNote = '';
     if ($preferredDisplay && $preferredDisplay !== $recLabel) {
-        $preferredNote = " Role dipilih kandidat: {$preferredDisplay}, namun data menunjukkan kecocokan lebih kuat di {$recLabel}.";
+        $preferredNote = " Role dipilih kandidat: {$preferredDisplay}, namun role paling cocok dari DISC adalah {$recLabel}.";
     }
 
-    return "Kandidat direkomendasikan sebagai {$recLabel} karena kombinasi trait utama {$topTraits} paling sesuai dengan profil role.{$preferredNote} Skor per role: " . implode(', ', $scoreParts) . '.';
+    return "Dominan {$dominantLabel} dengan secondary {$secondaryLabel}. {$discText} Rekomendasi: {$recLabel} (score {$recScore}/10, bucket {$bucket}).{$preferredNote}{$warningText}";
 }
 
 function evaluate_candidate(array $answersByQuestion, ?string $preferredRoleLabel): array
@@ -179,51 +226,63 @@ function evaluate_candidate(array $answersByQuestion, ?string $preferredRoleLabe
         }
     }
 
-    $compositeCounts = [
-        'D' => $mostCounts['D'] + max(0, $totalQuestions - $leastCounts['D']),
-        'I' => $mostCounts['I'] + max(0, $totalQuestions - $leastCounts['I']),
-        'S' => $mostCounts['S'] + max(0, $totalQuestions - $leastCounts['S']),
-        'C' => $mostCounts['C'] + max(0, $totalQuestions - $leastCounts['C']),
+    $discRawScores = [
+        'D' => ($mostCounts['D'] * 2) - $leastCounts['D'],
+        'I' => ($mostCounts['I'] * 2) - $leastCounts['I'],
+        'S' => ($mostCounts['S'] * 2) - $leastCounts['S'],
+        'C' => ($mostCounts['C'] * 2) - $leastCounts['C'],
     ];
 
-    $group = detect_role_group($preferredRoleLabel);
-    $groupRoleKeys = ROLE_GROUPS[$group];
-
     $roleScores = [];
-    foreach (array_keys(ROLE_PROFILES) as $roleKey) {
-        $profile = ROLE_PROFILES[$roleKey];
-        $fit = calculate_role_fit_score_10($compositeCounts, $profile['weights'], $totalQuestions);
-        $roleScores[$roleKey] = $fit;
+    foreach (ROLE_KEYS as $roleKey) {
+        $roleScores[$roleKey] = role_fit_score_10($roleKey, $discRawScores);
     }
 
-    $eligibleRoles = [];
-    foreach ($groupRoleKeys as $roleKey) {
-        $profile = ROLE_PROFILES[$roleKey];
-        if (($roleScores[$roleKey] ?? 0) >= PRIMARY_MIN_FIT && passes_gate($mostCounts, $profile['gates'])) {
-            $eligibleRoles[] = $roleKey;
+    $sortedRoles = ROLE_KEYS;
+    usort($sortedRoles, static function ($a, $b) use ($roleScores) {
+        return ($roleScores[$b] ?? 0) <=> ($roleScores[$a] ?? 0);
+    });
+
+    $topRole = $sortedRoles[0] ?? 'MANAGER';
+    $preferredRoleKey = normalize_role_key($preferredRoleLabel);
+    $evaluationRole = $preferredRoleKey ?? $topRole;
+    $evaluationScore = (int) ($roleScores[$evaluationRole] ?? 0);
+    $flags = detect_red_flags($evaluationRole, $discRawScores);
+
+    $rejectReasons = [];
+    foreach ($flags as $flag) {
+        if (($flag['level'] ?? '') === 'reject') {
+            $rejectReasons[] = (string) ($flag['message'] ?? 'Red flag');
         }
     }
 
-    $recommendation = 'TIDAK_DIREKOMENDASIKAN';
-    $reasonMeta = [
-        'selected_group' => $group,
-    ];
+    if ($evaluationScore < PRIMARY_MIN_FIT) {
+        $rejectReasons[] = 'Skor role dipilih di bawah batas minimum.';
+    }
 
-    if (!empty($eligibleRoles)) {
-        usort($eligibleRoles, static function ($a, $b) use ($roleScores) {
-            return ($roleScores[$b] ?? 0) <=> ($roleScores[$a] ?? 0);
-        });
-        $recommendation = $eligibleRoles[0];
+    $recommendation = 'TIDAK_DIREKOMENDASIKAN';
+    if ($evaluationScore >= PRIMARY_MIN_FIT && empty($rejectReasons)) {
+        $recommendation = $evaluationRole;
     }
 
     return [
-        'discCounts' => $compositeCounts,
+        'discCounts' => $discRawScores,
         'mostCounts' => $mostCounts,
         'leastCounts' => $leastCounts,
         'roleScores' => $roleScores,
         'recommendation' => $recommendation,
-        'reason' => generate_reason($recommendation, $mostCounts, $leastCounts, $compositeCounts, $roleScores, $preferredRoleLabel, $reasonMeta),
-        'reasonMeta' => $reasonMeta,
+        'reason' => generate_reason($recommendation, $mostCounts, $leastCounts, $discRawScores, $roleScores, $preferredRoleLabel, [
+            'warnings' => array_values(array_filter($flags, static function ($f) {
+                return (($f['level'] ?? '') === 'warning');
+            })),
+            'reject_reasons' => $rejectReasons,
+        ]),
+        'reasonMeta' => [
+            'reject_reasons' => $rejectReasons,
+            'warnings' => array_values(array_filter($flags, static function ($f) {
+                return (($f['level'] ?? '') === 'warning');
+            })),
+        ],
     ];
 }
 

@@ -40,13 +40,13 @@
         <div>
           <label for="import_mode"><strong>Mode import</strong></label>
           <select id="import_mode" name="import_mode" style="margin-top:6px;">
-            <option value="append" <?= (($bulk_preview_mode ?? 'append') === 'append') ? 'selected' : '' ?>>Append (tambah, tidak boleh tabrakan role+order)</option>
-            <option value="replace" <?= (($bulk_preview_mode ?? 'append') === 'replace') ? 'selected' : '' ?>>Replace per role (hapus role terkait lalu isi baru)</option>
+            <option value="append" <?= (($bulk_preview_mode ?? 'append') === 'append') ? 'selected' : '' ?>>Append (tambah, tidak boleh tabrakan order)</option>
+            <option value="replace" <?= (($bulk_preview_mode ?? 'append') === 'replace') ? 'selected' : '' ?>>Replace semua soal aktif (hapus semua lalu isi baru)</option>
           </select>
         </div>
       </div>
       <label for="bulk_csv" style="display:block;margin-top:10px;"><strong>Atau tempel CSV di sini</strong></label>
-      <textarea id="bulk_csv" name="bulk_csv" rows="8" placeholder="role_key,order,option_a,option_b,option_c,option_d,is_active" style="margin-top:6px;"></textarea>
+      <textarea id="bulk_csv" name="bulk_csv" rows="8" placeholder="role_key,order,option_a,option_b,option_c,option_d,disc_a,disc_b,disc_c,disc_d,is_active" style="margin-top:6px;"></textarea>
       <div class="hr-actions" style="margin-top:10px;">
         <button type="submit" class="btn-primary">Preview Bulk</button>
       </div>
@@ -57,20 +57,9 @@
         <h3 style="margin-bottom:8px;">Preview Import</h3>
         <p class="subtitle" style="margin-bottom:8px;">
           Total baris valid: <?= h((string) ($bulk_preview_total ?? count($bulk_preview_rows))) ?> |
-          Mode: <?= h(($bulk_preview_mode ?? 'append') === 'replace' ? 'Replace per role' : 'Append') ?>
+          Mode: <?= h(($bulk_preview_mode ?? 'append') === 'replace' ? 'Replace semua soal' : 'Append') ?>
         </p>
-        <?php if (!empty($bulk_preview_summary) && is_array($bulk_preview_summary)): ?>
-          <p class="subtitle" style="margin-bottom:10px;">
-            Ringkasan role:
-            <?php
-              $parts = [];
-              foreach ($bulk_preview_summary as $role => $count) {
-                  $parts[] = $role . ' (' . $count . ')';
-              }
-              echo h(implode(', ', $parts));
-            ?>
-          </p>
-        <?php endif; ?>
+        <p class="subtitle" style="margin-bottom:10px;">Scope bank soal: <strong>All</strong>.</p>
 
         <table>
           <thead>
@@ -87,7 +76,7 @@
           <tbody>
             <?php foreach ($bulk_preview_rows as $row): ?>
               <tr>
-                <td><?= h((string) ($row['role_key'] ?? '')) ?></td>
+                <td>All</td>
                 <td><?= h((string) ((int) ($row['order'] ?? 0))) ?></td>
                 <td><?= h((string) ($row['option_a'] ?? '')) ?></td>
                 <td><?= h((string) ($row['option_b'] ?? '')) ?></td>
@@ -116,17 +105,7 @@
   </section>
 
   <section class="table-card">
-    <form method="get" action="<?= h(route_path('/hr/questions')) ?>" class="filter-grid" style="margin-bottom:12px;">
-      <div class="subtitle" style="display:flex;align-items:center;padding:0 6px;">Filter soal berdasarkan role</div>
-      <select name="role">
-        <option value="">Semua role</option>
-        <?php foreach (($role_options ?? []) as $role): ?>
-          <option value="<?= h($role) ?>" <?= (($role_filter ?? '') === $role) ? 'selected' : '' ?>><?= h($role) ?></option>
-        <?php endforeach; ?>
-      </select>
-      <button type="submit" class="btn-secondary">Filter</button>
-      <a href="<?= h(route_path('/hr/questions')) ?>" class="btn-secondary">Reset</a>
-    </form>
+    <p class="subtitle" style="margin-bottom:12px;">Semua soal pada bank ini berlaku untuk semua posisi (Role: All).</p>
 
     <table>
       <thead>
@@ -144,7 +123,7 @@
           <?php foreach ($question_bank as $q): ?>
             <tr>
               <td>#<?= h((string) $q['id']) ?></td>
-              <td><?= h($q['role_key']) ?></td>
+              <td>All</td>
               <td><?= h((string) $q['order']) ?></td>
               <td>
                 <small>A. <?= h($q['optionA']) ?></small><br>

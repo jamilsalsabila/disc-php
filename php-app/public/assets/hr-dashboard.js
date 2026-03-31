@@ -11,19 +11,26 @@
   let discChart;
 
   const roleLabels = {
-    FLOOR_CREW: 'Floor Crew ( Server, Runner, Housekeeping )',
-    BAR_CREW: 'Bar Crew',
-    KITCHEN_CREW: 'Kitchen Crew ( Cook, Cook Helper, Steward )',
     MANAGER: 'Manager',
-    BACK_OFFICE: 'Back Office ( Admin )',
+    BACK_OFFICE: 'Back Office',
+    HEAD_KITCHEN: 'Head Kitchen',
+    HEAD_BAR: 'Head Bar',
+    FLOOR_CAPTAIN: 'Floor Captain',
+    COOK: 'Cook',
+    COOK_HELPER: 'Cook Helper',
+    STEWARD: 'Steward',
+    MIXOLOGIST: 'Mixologist',
+    SERVER: 'Server',
+    HOUSEKEEPING: 'Housekeeping',
     // Legacy codes
-    SERVER_SPECIALIST: 'Floor Crew ( Server, Runner, Housekeeping )',
-    BEVERAGE_SPECIALIST: 'Bar Crew',
-    SENIOR_COOK: 'Kitchen Crew ( Cook, Cook Helper, Steward )',
+    SERVER_SPECIALIST: 'Server',
+    BEVERAGE_SPECIALIST: 'Mixologist',
+    SENIOR_COOK: 'Cook',
     ASSISTANT_MANAGER: 'Manager',
-    OPERATIONS_ADMIN: 'Back Office ( Admin )',
-    TIDAK_DIREKOMENDASIKAN_SERVICE: 'Tidak Direkomendasikan (Grup Service)',
-    TIDAK_DIREKOMENDASIKAN_MANAGEMENT: 'Tidak Direkomendasikan (Grup Management)',
+    OPERATIONS_ADMIN: 'Back Office',
+    FLOOR_CREW: 'Server',
+    BAR_CREW: 'Mixologist',
+    KITCHEN_CREW: 'Cook',
     INCOMPLETE: 'Incomplete',
     TIDAK_DIREKOMENDASIKAN: 'Tidak Direkomendasikan'
   };

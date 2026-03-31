@@ -49,16 +49,25 @@ if (!isset($_COOKIE['disc_browser_token']) || !is_string($_COOKIE['disc_browser_
 function recommendation_options(): array
 {
     return [
-        ['value' => 'FLOOR_CREW', 'label' => 'Floor Crew ( Server, Runner, Housekeeping )'],
-        ['value' => 'BAR_CREW', 'label' => 'Bar Crew'],
-        ['value' => 'KITCHEN_CREW', 'label' => 'Kitchen Crew ( Cook, Cook Helper, Steward )'],
         ['value' => 'MANAGER', 'label' => 'Manager'],
-        ['value' => 'BACK_OFFICE', 'label' => 'Back Office ( Admin )'],
-        ['value' => 'TIDAK_DIREKOMENDASIKAN_SERVICE', 'label' => 'Tidak Direkomendasikan (Grup Service)'],
-        ['value' => 'TIDAK_DIREKOMENDASIKAN_MANAGEMENT', 'label' => 'Tidak Direkomendasikan (Grup Management)'],
+        ['value' => 'BACK_OFFICE', 'label' => 'Back Office'],
+        ['value' => 'HEAD_KITCHEN', 'label' => 'Head Kitchen'],
+        ['value' => 'HEAD_BAR', 'label' => 'Head Bar'],
+        ['value' => 'FLOOR_CAPTAIN', 'label' => 'Floor Captain'],
+        ['value' => 'COOK', 'label' => 'Cook'],
+        ['value' => 'COOK_HELPER', 'label' => 'Cook Helper'],
+        ['value' => 'STEWARD', 'label' => 'Steward'],
+        ['value' => 'MIXOLOGIST', 'label' => 'Mixologist'],
+        ['value' => 'SERVER', 'label' => 'Server'],
+        ['value' => 'HOUSEKEEPING', 'label' => 'Housekeeping'],
         ['value' => 'INCOMPLETE', 'label' => 'Incomplete'],
         ['value' => 'TIDAK_DIREKOMENDASIKAN', 'label' => 'Tidak Direkomendasikan'],
     ];
+}
+
+function question_role_options(): array
+{
+    return ['All'];
 }
 
 function ensure_candidate_session(PDO $pdo): ?array
@@ -80,6 +89,19 @@ function ensure_candidate_session(PDO $pdo): ?array
 function build_answers_from_payload(array $payload, array $questions): array
 {
     $answers = [];
+    $discByCodePerQuestion = [];
+    foreach ($questions as $q) {
+        $qid = (int) ($q['id'] ?? 0);
+        if ($qid <= 0) {
+            continue;
+        }
+        $discByCodePerQuestion[$qid] = [
+            'A' => strtoupper((string) ($q['discA'] ?? 'D')),
+            'B' => strtoupper((string) ($q['discB'] ?? 'I')),
+            'C' => strtoupper((string) ($q['discC'] ?? 'S')),
+            'D' => strtoupper((string) ($q['discD'] ?? 'C')),
+        ];
+    }
 
     foreach ($questions as $question) {
         $qid = (int) $question['id'];
@@ -91,8 +113,8 @@ function build_answers_from_payload(array $payload, array $questions): array
         }
 
         $answers[$qid] = [
-            'most' => ['optionCode' => $most, 'disc' => OPTION_TO_DISC[$most] ?? null],
-            'least' => ['optionCode' => $least, 'disc' => OPTION_TO_DISC[$least] ?? null],
+            'most' => ['optionCode' => $most, 'disc' => $discByCodePerQuestion[$qid][$most] ?? OPTION_TO_DISC[$most] ?? null],
+            'least' => ['optionCode' => $least, 'disc' => $discByCodePerQuestion[$qid][$least] ?? OPTION_TO_DISC[$least] ?? null],
         ];
     }
 
@@ -271,11 +293,14 @@ function normalize_role_score_10($raw): int
 function canonical_role_code(?string $code): ?string
 {
     $map = [
-        'SERVER_SPECIALIST' => 'FLOOR_CREW',
-        'BEVERAGE_SPECIALIST' => 'BAR_CREW',
-        'SENIOR_COOK' => 'KITCHEN_CREW',
+        'SERVER_SPECIALIST' => 'SERVER',
+        'BEVERAGE_SPECIALIST' => 'MIXOLOGIST',
+        'SENIOR_COOK' => 'COOK',
         'ASSISTANT_MANAGER' => 'MANAGER',
         'OPERATIONS_ADMIN' => 'BACK_OFFICE',
+        'FLOOR_CREW' => 'SERVER',
+        'BAR_CREW' => 'MIXOLOGIST',
+        'KITCHEN_CREW' => 'COOK',
     ];
 
     if (!is_string($code) || $code === '') {
@@ -302,9 +327,9 @@ function extract_role_scores_from_candidate(array $candidate): array
 
     if (empty($scores)) {
         $scores = [
-            'FLOOR_CREW' => normalize_role_score_10($candidate['score_server'] ?? 0),
-            'BAR_CREW' => normalize_role_score_10($candidate['score_beverage'] ?? 0),
-            'KITCHEN_CREW' => normalize_role_score_10($candidate['score_cook'] ?? 0),
+            'SERVER' => normalize_role_score_10($candidate['score_server'] ?? 0),
+            'MIXOLOGIST' => normalize_role_score_10($candidate['score_beverage'] ?? 0),
+            'COOK' => normalize_role_score_10($candidate['score_cook'] ?? 0),
         ];
     }
 
@@ -349,7 +374,7 @@ function expire_overdue_candidates(PDO $pdo, array $config): int
 
     foreach ($overdueCandidates as $candidate) {
         $draftAnswers = parse_draft_answers_from_candidate($candidate);
-        $questions = list_questions($pdo, false, $candidate['selected_role'] ?? null);
+        $questions = list_questions($pdo, false, null);
         $totalQuestions = count($questions);
         $answeredCount = count($draftAnswers);
         $minimumRequired = (int) ceil($totalQuestions * $minRatio);
@@ -447,7 +472,7 @@ if ($method === 'POST' && $path === '/start') {
         'selected_role' => $selectedRole,
     ];
 
-    $activeQuestions = list_questions($pdo, false, $selectedRole);
+    $activeQuestions = list_questions($pdo, false, null);
     if (empty($activeQuestions)) {
         render('candidate/identity', [
             'page_title' => 'Asesmen Kandidat',
@@ -529,7 +554,7 @@ if ($method === 'GET' && $path === '/test') {
         redirect(route_path('/thank-you?id=' . (int) $candidate['id']));
     }
 
-    $questions = list_questions($pdo, false, $candidate['selected_role']);
+    $questions = list_questions($pdo, false, null);
     $draftAnswers = parse_draft_answers_from_candidate($candidate);
     if (empty($questions)) {
         unset($_SESSION['candidate_id']);
@@ -581,7 +606,7 @@ if ($method === 'POST' && $path === '/progress-save') {
         json_response(['ok' => false, 'message' => 'Tes sudah selesai'], 409);
     }
 
-    $questions = list_questions($pdo, false, $candidate['selected_role']);
+    $questions = list_questions($pdo, false, null);
     $answers = build_answers_from_payload($_POST, $questions);
     update_candidate_draft_answers($pdo, (int) $candidate['id'], $answers);
 
@@ -602,7 +627,7 @@ if ($method === 'POST' && $path === '/submit') {
         redirect(route_path('/thank-you?id=' . (int) $candidate['id']));
     }
 
-    $questions = list_questions($pdo, false, $candidate['selected_role']);
+    $questions = list_questions($pdo, false, null);
     $postedAnswers = build_answers_from_payload($_POST, $questions);
     $draftAnswers = parse_draft_answers_from_candidate($candidate);
     $answers = merge_answers_with_fallback($postedAnswers, $draftAnswers);
@@ -837,9 +862,9 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)$#', $path, $m)) {
     }
     if (empty($roleScoreData)) {
         $roleScoreData = [
-            'FLOOR_CREW' => (int) ($candidate['score_server'] ?? 0),
-            'BAR_CREW' => (int) ($candidate['score_beverage'] ?? 0),
-            'KITCHEN_CREW' => (int) ($candidate['score_cook'] ?? 0),
+            'SERVER' => (int) ($candidate['score_server'] ?? 0),
+            'MIXOLOGIST' => (int) ($candidate['score_beverage'] ?? 0),
+            'COOK' => (int) ($candidate['score_cook'] ?? 0),
         ];
     }
 
@@ -945,10 +970,7 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)/export/answers\.pdf$
 
 if ($method === 'GET' && $path === '/hr/questions') {
     require_hr_auth($config);
-    $roleFilter = trim((string) ($_GET['role'] ?? ''));
-    if ($roleFilter !== '' && !in_array($roleFilter, $config['role_options'], true)) {
-        $roleFilter = '';
-    }
+    $questionRoleOptions = question_role_options();
 
     $flashMessage = $_SESSION['questions_flash_message'] ?? null;
     $flashType = $_SESSION['questions_flash_type'] ?? 'info';
@@ -964,9 +986,8 @@ if ($method === 'GET' && $path === '/hr/questions') {
 
     render('hr/questions', [
         'page_title' => 'Kelola Soal DISC',
-        'question_bank' => list_questions($pdo, true, $roleFilter ?: null),
-        'role_options' => $config['role_options'],
-        'role_filter' => $roleFilter,
+        'question_bank' => list_questions($pdo, true, null),
+        'role_options' => $questionRoleOptions,
         'flash_message' => is_string($flashMessage) ? $flashMessage : null,
         'flash_type' => is_string($flashType) ? $flashType : 'info',
         'bulk_preview_rows' => is_array($bulkPreviewRows) ? array_slice($bulkPreviewRows, 0, 10) : [],
@@ -983,7 +1004,7 @@ if ($method === 'GET' && $path === '/hr/questions/template.csv') {
 
     header('Content-Type: text/csv; charset=utf-8');
     header('Content-Disposition: attachment; filename="template-soal-disc.csv"');
-    echo build_bulk_question_template_csv($config['role_options']);
+    echo build_bulk_question_template_csv(question_role_options());
     exit;
 }
 
@@ -1024,6 +1045,7 @@ if ($method === 'POST' && $path === '/hr/questions/bulk-preview-clear') {
 
 if ($method === 'POST' && $path === '/hr/questions/bulk-preview') {
     require_hr_auth($config);
+    $questionRoleOptions = question_role_options();
 
     $csvRaw = extract_bulk_csv_input();
 
@@ -1040,7 +1062,7 @@ if ($method === 'POST' && $path === '/hr/questions/bulk-preview') {
         $importMode = 'append';
     }
 
-    $parsed = parse_bulk_questions_csv($csvRaw, $config['role_options']);
+    $parsed = parse_bulk_questions_csv($csvRaw, $questionRoleOptions);
     $rows = $parsed['rows'] ?? [];
     $errors = $parsed['errors'] ?? [];
     $existingKeys = get_question_role_order_keys($pdo);
@@ -1102,7 +1124,7 @@ if ($method === 'POST' && $path === '/hr/questions/bulk-import-confirm') {
     unset($_SESSION['questions_bulk_preview_rows'], $_SESSION['questions_bulk_preview_mode'], $_SESSION['questions_bulk_preview_summary'], $_SESSION['questions_bulk_preview_total']);
     unset($_SESSION['questions_bulk_errors']);
     $_SESSION['questions_flash_message'] = "Berhasil import {$inserted} soal (" . implode(', ', $parts) . ').'
-        . ($replaceExisting ? ' Mode: replace per role.' : ' Mode: append.');
+        . ($replaceExisting ? ' Mode: replace semua soal.' : ' Mode: append.');
     $_SESSION['questions_flash_type'] = 'success';
     redirect(route_path('/hr/questions'));
 }
@@ -1114,10 +1136,14 @@ if ($method === 'GET' && $path === '/hr/questions/new') {
         'page_title' => 'Tambah Soal DISC',
         'form_title' => 'Tambah Soal',
         'action_url' => route_path('/hr/questions/new'),
-        'role_options' => $config['role_options'],
+        'role_options' => question_role_options(),
         'values' => [
-            'role_key' => $config['role_options'][0],
-            'order' => get_next_question_order($pdo, $config['role_options'][0]),
+            'role_key' => 'All',
+            'order' => get_next_question_order($pdo, null),
+            'disc_a' => 'D',
+            'disc_b' => 'I',
+            'disc_c' => 'S',
+            'disc_d' => 'C',
             'is_active' => true,
         ],
     ]);
@@ -1126,32 +1152,41 @@ if ($method === 'GET' && $path === '/hr/questions/new') {
 
 if ($method === 'POST' && $path === '/hr/questions/new') {
     require_hr_auth($config);
+    $questionRoleOptions = question_role_options();
 
     $payload = [
-        'role_key' => trim((string) ($_POST['role_key'] ?? '')),
+        'role_key' => 'All',
         'order' => (int) ($_POST['order'] ?? 0),
         'option_a' => trim((string) ($_POST['option_a'] ?? '')),
         'option_b' => trim((string) ($_POST['option_b'] ?? '')),
         'option_c' => trim((string) ($_POST['option_c'] ?? '')),
         'option_d' => trim((string) ($_POST['option_d'] ?? '')),
+        'disc_a' => strtoupper(trim((string) ($_POST['disc_a'] ?? 'D'))),
+        'disc_b' => strtoupper(trim((string) ($_POST['disc_b'] ?? 'I'))),
+        'disc_c' => strtoupper(trim((string) ($_POST['disc_c'] ?? 'S'))),
+        'disc_d' => strtoupper(trim((string) ($_POST['disc_d'] ?? 'C'))),
         'is_active' => !empty($_POST['is_active']),
     ];
 
-    $valid = in_array($payload['role_key'], $config['role_options'], true)
+    $valid = in_array($payload['role_key'], $questionRoleOptions, true)
         && $payload['order'] > 0
         && mb_strlen($payload['option_a']) >= 3
         && mb_strlen($payload['option_b']) >= 3
         && mb_strlen($payload['option_c']) >= 3
-        && mb_strlen($payload['option_d']) >= 3;
+        && mb_strlen($payload['option_d']) >= 3
+        && in_array($payload['disc_a'], ['D', 'I', 'S', 'C'], true)
+        && in_array($payload['disc_b'], ['D', 'I', 'S', 'C'], true)
+        && in_array($payload['disc_c'], ['D', 'I', 'S', 'C'], true)
+        && in_array($payload['disc_d'], ['D', 'I', 'S', 'C'], true);
 
     if (!$valid) {
         render('hr/question-form', [
             'page_title' => 'Tambah Soal DISC',
             'form_title' => 'Tambah Soal',
             'action_url' => route_path('/hr/questions/new'),
-            'role_options' => $config['role_options'],
+            'role_options' => $questionRoleOptions,
             'values' => $payload,
-            'error_message' => 'Semua field opsi wajib diisi minimal 3 karakter.',
+            'error_message' => 'Semua opsi wajib minimal 3 karakter dan mapping DISC harus D/I/S/C.',
         ]);
         exit;
     }
@@ -1174,14 +1209,18 @@ if ($method === 'GET' && preg_match('#^/hr/questions/(\d+)/edit$#', $path, $m)) 
         'page_title' => 'Edit Soal #' . $row['id'],
         'form_title' => 'Edit Soal #' . $row['id'],
         'action_url' => route_path('/hr/questions/' . $row['id'] . '/edit'),
-        'role_options' => $config['role_options'],
+        'role_options' => question_role_options(),
         'values' => [
-            'role_key' => $row['role_key'],
+            'role_key' => 'All',
             'order' => (int) $row['question_order'],
             'option_a' => $row['option_a'],
             'option_b' => $row['option_b'],
             'option_c' => $row['option_c'],
             'option_d' => $row['option_d'],
+            'disc_a' => strtoupper((string) ($row['disc_a'] ?? 'D')),
+            'disc_b' => strtoupper((string) ($row['disc_b'] ?? 'I')),
+            'disc_c' => strtoupper((string) ($row['disc_c'] ?? 'S')),
+            'disc_d' => strtoupper((string) ($row['disc_d'] ?? 'C')),
             'is_active' => ((int) $row['is_active']) === 1,
         ],
     ]);
@@ -1190,32 +1229,41 @@ if ($method === 'GET' && preg_match('#^/hr/questions/(\d+)/edit$#', $path, $m)) 
 
 if ($method === 'POST' && preg_match('#^/hr/questions/(\d+)/edit$#', $path, $m)) {
     require_hr_auth($config);
+    $questionRoleOptions = question_role_options();
 
     $payload = [
-        'role_key' => trim((string) ($_POST['role_key'] ?? '')),
+        'role_key' => 'All',
         'order' => (int) ($_POST['order'] ?? 0),
         'option_a' => trim((string) ($_POST['option_a'] ?? '')),
         'option_b' => trim((string) ($_POST['option_b'] ?? '')),
         'option_c' => trim((string) ($_POST['option_c'] ?? '')),
         'option_d' => trim((string) ($_POST['option_d'] ?? '')),
+        'disc_a' => strtoupper(trim((string) ($_POST['disc_a'] ?? 'D'))),
+        'disc_b' => strtoupper(trim((string) ($_POST['disc_b'] ?? 'I'))),
+        'disc_c' => strtoupper(trim((string) ($_POST['disc_c'] ?? 'S'))),
+        'disc_d' => strtoupper(trim((string) ($_POST['disc_d'] ?? 'C'))),
         'is_active' => !empty($_POST['is_active']),
     ];
 
-    $valid = in_array($payload['role_key'], $config['role_options'], true)
+    $valid = in_array($payload['role_key'], $questionRoleOptions, true)
         && $payload['order'] > 0
         && mb_strlen($payload['option_a']) >= 3
         && mb_strlen($payload['option_b']) >= 3
         && mb_strlen($payload['option_c']) >= 3
-        && mb_strlen($payload['option_d']) >= 3;
+        && mb_strlen($payload['option_d']) >= 3
+        && in_array($payload['disc_a'], ['D', 'I', 'S', 'C'], true)
+        && in_array($payload['disc_b'], ['D', 'I', 'S', 'C'], true)
+        && in_array($payload['disc_c'], ['D', 'I', 'S', 'C'], true)
+        && in_array($payload['disc_d'], ['D', 'I', 'S', 'C'], true);
 
     if (!$valid) {
         render('hr/question-form', [
             'page_title' => 'Edit Soal #' . (int) $m[1],
             'form_title' => 'Edit Soal #' . (int) $m[1],
             'action_url' => route_path('/hr/questions/' . (int) $m[1] . '/edit'),
-            'role_options' => $config['role_options'],
+            'role_options' => $questionRoleOptions,
             'values' => $payload,
-            'error_message' => 'Semua field opsi wajib diisi minimal 3 karakter.',
+            'error_message' => 'Semua opsi wajib minimal 3 karakter dan mapping DISC harus D/I/S/C.',
         ]);
         exit;
     }
@@ -1244,10 +1292,27 @@ if ($method === 'GET' && $path === '/hr/export/excel') {
     header('Content-Disposition: attachment; filename="disc-report-' . time() . '.csv"');
 
     $out = fopen('php://output', 'w');
-    fputcsv($out, ['ID', 'Nama', 'Email', 'WA', 'Role Dipilih', 'Rekomendasi', 'Kelayakan Wawancara', 'Status', 'D', 'I', 'S', 'C', 'Skor Floor Crew (1-10)', 'Skor Bar Crew (1-10)', 'Skor Kitchen Crew (1-10)', 'Alasan']);
+    $roleScoreColumns = [
+        'MANAGER' => 'Skor Manager (1-10)',
+        'BACK_OFFICE' => 'Skor Back Office (1-10)',
+        'HEAD_KITCHEN' => 'Skor Head Kitchen (1-10)',
+        'HEAD_BAR' => 'Skor Head Bar (1-10)',
+        'FLOOR_CAPTAIN' => 'Skor Floor Captain (1-10)',
+        'COOK' => 'Skor Cook (1-10)',
+        'COOK_HELPER' => 'Skor Cook Helper (1-10)',
+        'STEWARD' => 'Skor Steward (1-10)',
+        'MIXOLOGIST' => 'Skor Mixologist (1-10)',
+        'SERVER' => 'Skor Server (1-10)',
+        'HOUSEKEEPING' => 'Skor Housekeeping (1-10)',
+    ];
+    fputcsv($out, array_merge(
+        ['ID', 'Nama', 'Email', 'WA', 'Role Dipilih', 'Rekomendasi', 'Kelayakan Wawancara', 'Status', 'D', 'I', 'S', 'C'],
+        array_values($roleScoreColumns),
+        ['Alasan']
+    ));
     foreach ($rows as $row) {
         $roleScores = extract_role_scores_from_candidate($row);
-        fputcsv($out, [
+        $base = [
             $row['id'],
             $row['full_name'],
             $row['email'],
@@ -1260,11 +1325,14 @@ if ($method === 'GET' && $path === '/hr/export/excel') {
             $row['disc_i'],
             $row['disc_s'],
             $row['disc_c'],
-            $roleScores['FLOOR_CREW'] ?? 0,
-            $roleScores['BAR_CREW'] ?? 0,
-            $roleScores['KITCHEN_CREW'] ?? 0,
+        ];
+        $scoreCells = [];
+        foreach ($roleScoreColumns as $roleCode => $label) {
+            $scoreCells[] = $roleScores[$roleCode] ?? 0;
+        }
+        fputcsv($out, array_merge($base, $scoreCells, [
             $row['reason'],
-        ]);
+        ]));
     }
     fclose($out);
     exit;

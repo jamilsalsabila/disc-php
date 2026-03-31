@@ -44,33 +44,47 @@ function format_date_id(?string $iso): string
 function map_recommendation_label(?string $code): string
 {
     switch ($code) {
-        case 'FLOOR_CREW':
-            return 'Floor Crew ( Server, Runner, Housekeeping )';
-        case 'BAR_CREW':
-            return 'Bar Crew';
-        case 'KITCHEN_CREW':
-            return 'Kitchen Crew ( Cook, Cook Helper, Steward )';
         case 'MANAGER':
             return 'Manager';
         case 'BACK_OFFICE':
-            return 'Back Office ( Admin )';
+            return 'Back Office';
+        case 'HEAD_KITCHEN':
+            return 'Head Kitchen';
+        case 'HEAD_BAR':
+            return 'Head Bar';
+        case 'FLOOR_CAPTAIN':
+            return 'Floor Captain';
+        case 'COOK':
+            return 'Cook';
+        case 'COOK_HELPER':
+            return 'Cook Helper';
+        case 'STEWARD':
+            return 'Steward';
+        case 'MIXOLOGIST':
+            return 'Mixologist';
+        case 'SERVER':
+            return 'Server';
+        case 'HOUSEKEEPING':
+            return 'Housekeeping';
         // Legacy codes
+        case 'FLOOR_CREW':
+            return 'Server';
+        case 'BAR_CREW':
+            return 'Mixologist';
+        case 'KITCHEN_CREW':
+            return 'Cook';
         case 'SERVER_SPECIALIST':
-            return 'Floor Crew ( Server, Runner, Housekeeping )';
+            return 'Server';
         case 'BEVERAGE_SPECIALIST':
-            return 'Bar Crew';
+            return 'Mixologist';
         case 'SENIOR_COOK':
-            return 'Kitchen Crew ( Cook, Cook Helper, Steward )';
+            return 'Cook';
         case 'ASSISTANT_MANAGER':
             return 'Manager';
         case 'OPERATIONS_ADMIN':
-            return 'Back Office ( Admin )';
+            return 'Back Office';
         case 'INCOMPLETE':
             return 'Incomplete';
-        case 'TIDAK_DIREKOMENDASIKAN_SERVICE':
-            return 'Tidak Direkomendasikan (Grup Service)';
-        case 'TIDAK_DIREKOMENDASIKAN_MANAGEMENT':
-            return 'Tidak Direkomendasikan (Grup Management)';
         case 'TIDAK_DIREKOMENDASIKAN':
             return 'Tidak Direkomendasikan';
         default:

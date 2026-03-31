@@ -73,12 +73,16 @@ function migrate(PDO $pdo, array $config): void
     $pdo->exec(
         "CREATE TABLE IF NOT EXISTS questions_bank (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            role_key TEXT NOT NULL DEFAULT 'Floor Crew ( Server, Runner, Housekeeping )',
+            role_key TEXT NOT NULL DEFAULT 'Manager',
             question_order INTEGER NOT NULL,
             option_a TEXT NOT NULL,
             option_b TEXT NOT NULL,
             option_c TEXT NOT NULL,
             option_d TEXT NOT NULL,
+            disc_a TEXT NOT NULL DEFAULT 'D',
+            disc_b TEXT NOT NULL DEFAULT 'I',
+            disc_c TEXT NOT NULL DEFAULT 'S',
+            disc_d TEXT NOT NULL DEFAULT 'C',
             is_active INTEGER NOT NULL DEFAULT 1,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
@@ -103,6 +107,7 @@ function migrate(PDO $pdo, array $config): void
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_questions_order ON questions_bank(question_order);');
 
     ensure_questions_role_column($pdo);
+    ensure_questions_disc_columns($pdo);
     if (needs_role_migration($pdo)) {
         migrate_legacy_role_keys($pdo);
         deduplicate_questions_by_role($pdo);
@@ -128,20 +133,50 @@ function ensure_questions_role_column(PDO $pdo): void
     }
 
     if (!$hasRole) {
-        $pdo->exec("ALTER TABLE questions_bank ADD COLUMN role_key TEXT NOT NULL DEFAULT 'Floor Crew ( Server, Runner, Housekeeping )'");
+        $pdo->exec("ALTER TABLE questions_bank ADD COLUMN role_key TEXT NOT NULL DEFAULT 'Manager'");
     }
 
-    $pdo->exec("UPDATE questions_bank SET role_key = 'Floor Crew ( Server, Runner, Housekeeping )' WHERE role_key IS NULL OR role_key = ''");
+    $pdo->exec("UPDATE questions_bank SET role_key = 'Manager' WHERE role_key IS NULL OR role_key = ''");
+}
+
+function ensure_questions_disc_columns(PDO $pdo): void
+{
+    $columns = $pdo->query('PRAGMA table_info(questions_bank)')->fetchAll();
+    $names = array_map(static function ($col) {
+        return (string) ($col['name'] ?? '');
+    }, $columns);
+
+    if (!in_array('disc_a', $names, true)) {
+        $pdo->exec("ALTER TABLE questions_bank ADD COLUMN disc_a TEXT NOT NULL DEFAULT 'D'");
+    }
+    if (!in_array('disc_b', $names, true)) {
+        $pdo->exec("ALTER TABLE questions_bank ADD COLUMN disc_b TEXT NOT NULL DEFAULT 'I'");
+    }
+    if (!in_array('disc_c', $names, true)) {
+        $pdo->exec("ALTER TABLE questions_bank ADD COLUMN disc_c TEXT NOT NULL DEFAULT 'S'");
+    }
+    if (!in_array('disc_d', $names, true)) {
+        $pdo->exec("ALTER TABLE questions_bank ADD COLUMN disc_d TEXT NOT NULL DEFAULT 'C'");
+    }
+
+    $pdo->exec("UPDATE questions_bank SET disc_a = 'D' WHERE disc_a IS NULL OR disc_a = ''");
+    $pdo->exec("UPDATE questions_bank SET disc_b = 'I' WHERE disc_b IS NULL OR disc_b = ''");
+    $pdo->exec("UPDATE questions_bank SET disc_c = 'S' WHERE disc_c IS NULL OR disc_c = ''");
+    $pdo->exec("UPDATE questions_bank SET disc_d = 'C' WHERE disc_d IS NULL OR disc_d = ''");
 }
 
 function migrate_legacy_role_keys(PDO $pdo): void
 {
     $roleMap = [
-        'Server Specialist' => 'Floor Crew ( Server, Runner, Housekeeping )',
-        'Beverage Specialist' => 'Bar Crew',
-        'Senior Cook' => 'Kitchen Crew ( Cook, Cook Helper, Steward )',
-        'Admin Operasional' => 'Back Office ( Admin )',
+        'Server Specialist' => 'Server',
+        'Beverage Specialist' => 'Mixologist',
+        'Senior Cook' => 'Cook',
+        'Admin Operasional' => 'Back Office',
         'Asisten Manager' => 'Manager',
+        'Floor Crew ( Server, Runner, Housekeeping )' => 'Server',
+        'Bar Crew' => 'Mixologist',
+        'Kitchen Crew ( Cook, Cook Helper, Steward )' => 'Cook',
+        'Back Office ( Admin )' => 'Back Office',
     ];
 
     $stmt = $pdo->prepare('UPDATE questions_bank SET role_key = ? WHERE role_key = ?');
@@ -271,7 +306,7 @@ function seed_questions_by_role_if_missing(PDO $pdo, array $config): void
     }
 
     $countStmt = $pdo->prepare('SELECT COUNT(*) FROM questions_bank WHERE role_key = ?');
-    $insertStmt = $pdo->prepare('INSERT INTO questions_bank (role_key, question_order, option_a, option_b, option_c, option_d, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)');
+        $insertStmt = $pdo->prepare('INSERT INTO questions_bank (role_key, question_order, option_a, option_b, option_c, option_d, disc_a, disc_b, disc_c, disc_d, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)');
 
     foreach ($byRole as $roleKey => $sourcePath) {
         if (!is_file($sourcePath)) {
@@ -303,6 +338,10 @@ function seed_questions_by_role_if_missing(PDO $pdo, array $config): void
                 $opts['B'] ?? '',
                 $opts['C'] ?? '',
                 $opts['D'] ?? '',
+                OPTION_TO_DISC['A'],
+                OPTION_TO_DISC['B'],
+                OPTION_TO_DISC['C'],
+                OPTION_TO_DISC['D'],
                 $now,
                 $now,
             ]);
@@ -339,11 +378,15 @@ function list_questions(PDO $pdo, bool $includeInactive = true, ?string $roleKey
             'optionB' => $row['option_b'],
             'optionC' => $row['option_c'],
             'optionD' => $row['option_d'],
+            'discA' => $row['disc_a'] ?? 'D',
+            'discB' => $row['disc_b'] ?? 'I',
+            'discC' => $row['disc_c'] ?? 'S',
+            'discD' => $row['disc_d'] ?? 'C',
             'options' => [
-                ['code' => 'A', 'text' => $row['option_a'], 'disc' => 'D'],
-                ['code' => 'B', 'text' => $row['option_b'], 'disc' => 'I'],
-                ['code' => 'C', 'text' => $row['option_c'], 'disc' => 'S'],
-                ['code' => 'D', 'text' => $row['option_d'], 'disc' => 'C'],
+                ['code' => 'A', 'text' => $row['option_a'], 'disc' => $row['disc_a'] ?? 'D'],
+                ['code' => 'B', 'text' => $row['option_b'], 'disc' => $row['disc_b'] ?? 'I'],
+                ['code' => 'C', 'text' => $row['option_c'], 'disc' => $row['disc_c'] ?? 'S'],
+                ['code' => 'D', 'text' => $row['option_d'], 'disc' => $row['disc_d'] ?? 'C'],
             ],
         ];
     }, $rows);
@@ -383,7 +426,7 @@ function get_next_question_order(PDO $pdo, ?string $roleKey = null): int
 
 function create_question(PDO $pdo, array $payload): void
 {
-    $stmt = $pdo->prepare('INSERT INTO questions_bank (role_key, question_order, option_a, option_b, option_c, option_d, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+    $stmt = $pdo->prepare('INSERT INTO questions_bank (role_key, question_order, option_a, option_b, option_c, option_d, disc_a, disc_b, disc_c, disc_d, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
     $now = now_iso();
     $stmt->execute([
         trim((string) $payload['role_key']),
@@ -392,6 +435,10 @@ function create_question(PDO $pdo, array $payload): void
         trim($payload['option_b']),
         trim($payload['option_c']),
         trim($payload['option_d']),
+        (string) ($payload['disc_a'] ?? 'D'),
+        (string) ($payload['disc_b'] ?? 'I'),
+        (string) ($payload['disc_c'] ?? 'S'),
+        (string) ($payload['disc_d'] ?? 'C'),
         !empty($payload['is_active']) ? 1 : 0,
         $now,
         $now,
@@ -423,7 +470,7 @@ function create_questions_bulk(PDO $pdo, array $rows, bool $replaceExistingPerRo
             }
         }
 
-        $insertStmt = $pdo->prepare('INSERT INTO questions_bank (role_key, question_order, option_a, option_b, option_c, option_d, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+        $insertStmt = $pdo->prepare('INSERT INTO questions_bank (role_key, question_order, option_a, option_b, option_c, option_d, disc_a, disc_b, disc_c, disc_d, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
         $now = now_iso();
         $inserted = 0;
         foreach ($rows as $row) {
@@ -434,6 +481,10 @@ function create_questions_bulk(PDO $pdo, array $rows, bool $replaceExistingPerRo
                 trim((string) $row['option_b']),
                 trim((string) $row['option_c']),
                 trim((string) $row['option_d']),
+                (string) ($row['disc_a'] ?? 'D'),
+                (string) ($row['disc_b'] ?? 'I'),
+                (string) ($row['disc_c'] ?? 'S'),
+                (string) ($row['disc_d'] ?? 'C'),
                 !empty($row['is_active']) ? 1 : 0,
                 $now,
                 $now,
@@ -451,7 +502,7 @@ function create_questions_bulk(PDO $pdo, array $rows, bool $replaceExistingPerRo
 
 function update_question(PDO $pdo, int $id, array $payload): bool
 {
-    $stmt = $pdo->prepare('UPDATE questions_bank SET role_key = ?, question_order = ?, option_a = ?, option_b = ?, option_c = ?, option_d = ?, is_active = ?, updated_at = ? WHERE id = ?');
+    $stmt = $pdo->prepare('UPDATE questions_bank SET role_key = ?, question_order = ?, option_a = ?, option_b = ?, option_c = ?, option_d = ?, disc_a = ?, disc_b = ?, disc_c = ?, disc_d = ?, is_active = ?, updated_at = ? WHERE id = ?');
     $stmt->execute([
         trim((string) $payload['role_key']),
         (int) $payload['order'],
@@ -459,6 +510,10 @@ function update_question(PDO $pdo, int $id, array $payload): bool
         trim($payload['option_b']),
         trim($payload['option_c']),
         trim($payload['option_d']),
+        (string) ($payload['disc_a'] ?? 'D'),
+        (string) ($payload['disc_b'] ?? 'I'),
+        (string) ($payload['disc_c'] ?? 'S'),
+        (string) ($payload['disc_d'] ?? 'C'),
         !empty($payload['is_active']) ? 1 : 0,
         now_iso(),
         $id,
@@ -563,9 +618,9 @@ function save_submission(PDO $pdo, array $payload): bool
         $evaluation['discCounts']['I'] ?? 0,
         $evaluation['discCounts']['S'] ?? 0,
         $evaluation['discCounts']['C'] ?? 0,
-        $evaluation['roleScores']['FLOOR_CREW'] ?? $evaluation['roleScores']['SERVER_SPECIALIST'] ?? 0,
-        $evaluation['roleScores']['BAR_CREW'] ?? $evaluation['roleScores']['BEVERAGE_SPECIALIST'] ?? 0,
-        $evaluation['roleScores']['KITCHEN_CREW'] ?? $evaluation['roleScores']['SENIOR_COOK'] ?? 0,
+        $evaluation['roleScores']['SERVER'] ?? $evaluation['roleScores']['FLOOR_CREW'] ?? $evaluation['roleScores']['SERVER_SPECIALIST'] ?? 0,
+        $evaluation['roleScores']['MIXOLOGIST'] ?? $evaluation['roleScores']['BAR_CREW'] ?? $evaluation['roleScores']['BEVERAGE_SPECIALIST'] ?? 0,
+        $evaluation['roleScores']['COOK'] ?? $evaluation['roleScores']['KITCHEN_CREW'] ?? $evaluation['roleScores']['SENIOR_COOK'] ?? 0,
         $payload['candidate_id'],
         'in_progress',
     ]);

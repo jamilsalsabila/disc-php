@@ -2,7 +2,7 @@
   <section class="hero-card question-form-card">
     <p class="eyebrow">HR Console</p>
     <h1><?= h($form_title) ?></h1>
-    <p class="subtitle">Pemetaan DISC tetap: A=D, B=I, C=S, D=C.</p>
+    <p class="subtitle">Bank soal mode one-for-all (Role: All). Mapping DISC per opsi dapat diatur sesuai rulebook.</p>
 
     <?php if (!empty($error_message)): ?>
       <div class="alert"><?= h($error_message) ?></div>
@@ -10,14 +10,10 @@
 
     <form method="post" action="<?= h($action_url) ?>" class="identity-form">
       <input type="hidden" name="_csrf" value="<?= h($csrf_token) ?>">
-
+      <input type="hidden" name="role_key" value="All">
       <label>
         Role
-        <select name="role_key" required>
-          <?php foreach (($role_options ?? []) as $role): ?>
-            <option value="<?= h($role) ?>" <?= (($values['role_key'] ?? '') === $role) ? 'selected' : '' ?>><?= h($role) ?></option>
-          <?php endforeach; ?>
-        </select>
+        <input type="text" value="All" disabled>
       </label>
 
       <label>
@@ -26,23 +22,55 @@
       </label>
 
       <label>
-        Opsi A (Dominance)
+        Opsi A
         <input type="text" name="option_a" value="<?= h($values['option_a'] ?? '') ?>" required>
       </label>
+      <label>
+        Mapping Opsi A
+        <select name="disc_a" required>
+          <?php foreach (['D','I','S','C'] as $d): ?>
+            <option value="<?= h($d) ?>" <?= (($values['disc_a'] ?? 'D') === $d) ? 'selected' : '' ?>><?= h($d) ?></option>
+          <?php endforeach; ?>
+        </select>
+      </label>
 
       <label>
-        Opsi B (Influence)
+        Opsi B
         <input type="text" name="option_b" value="<?= h($values['option_b'] ?? '') ?>" required>
       </label>
-
       <label>
-        Opsi C (Steadiness)
-        <input type="text" name="option_c" value="<?= h($values['option_c'] ?? '') ?>" required>
+        Mapping Opsi B
+        <select name="disc_b" required>
+          <?php foreach (['D','I','S','C'] as $d): ?>
+            <option value="<?= h($d) ?>" <?= (($values['disc_b'] ?? 'I') === $d) ? 'selected' : '' ?>><?= h($d) ?></option>
+          <?php endforeach; ?>
+        </select>
       </label>
 
       <label>
-        Opsi D (Conscientiousness)
+        Opsi C
+        <input type="text" name="option_c" value="<?= h($values['option_c'] ?? '') ?>" required>
+      </label>
+      <label>
+        Mapping Opsi C
+        <select name="disc_c" required>
+          <?php foreach (['D','I','S','C'] as $d): ?>
+            <option value="<?= h($d) ?>" <?= (($values['disc_c'] ?? 'S') === $d) ? 'selected' : '' ?>><?= h($d) ?></option>
+          <?php endforeach; ?>
+        </select>
+      </label>
+
+      <label>
+        Opsi D
         <input type="text" name="option_d" value="<?= h($values['option_d'] ?? '') ?>" required>
+      </label>
+      <label>
+        Mapping Opsi D
+        <select name="disc_d" required>
+          <?php foreach (['D','I','S','C'] as $d): ?>
+            <option value="<?= h($d) ?>" <?= (($values['disc_d'] ?? 'C') === $d) ? 'selected' : '' ?>><?= h($d) ?></option>
+          <?php endforeach; ?>
+        </select>
       </label>
 
       <label class="check-inline">

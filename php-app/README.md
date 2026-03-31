@@ -4,18 +4,36 @@ Versi produksi aplikasi asesmen DISC berbasis PHP + SQLite.
 
 ## Fitur utama
 
-- Tes DISC per role (Most/Least) dengan timer.
+- Tes DISC one-for-all (Most/Least) dengan timer.
 - Autosave jawaban parsial kandidat.
-- Auto-timeout submit untuk kandidat yang melewati deadline.
+- Auto-finalize kandidat timeout saat ada request admin/kandidat (tanpa cron wajib).
 - Dashboard HR (SPA/filter async, chart, profil kandidat).
 - CRUD soal manual.
 - Bulk upload soal via CSV:
   - download template,
   - preview sebelum import,
-  - mode `append` / `replace per role`,
-  - validasi duplikasi `role + order`,
+  - mode `append` / `replace semua soal`,
+  - validasi duplikasi `order`,
   - export error report CSV.
 - Export data kandidat dan jawaban.
+
+## Aturan bank soal
+
+- Bank soal aktif saat ini berjalan dengan scope `Role: All` (one-for-all).
+- Mapping DISC disimpan per soal (`disc_a`, `disc_b`, `disc_c`, `disc_d`) dan dipakai langsung saat scoring.
+
+## Aturan scoring ringkas
+
+- Skor DISC raw dihitung dari:
+  - `Most = +2`
+  - `Least = -1`
+- Evaluasi rekomendasi utama memakai **role yang dipilih kandidat**.
+- Red flag reject berlaku per role. Contoh:
+  - Manager: `D < 12` atau `I < 12`.
+  - Service/Bar: `I < 12`.
+  - Admin/Kitchen: `C < 12`.
+  - Support: `S < 12`.
+- Jika kena red flag reject atau skor role dipilih di bawah batas minimum, hasil: `TIDAK_DIREKOMENDASIKAN`.
 
 ## Jalankan lokal
 
@@ -31,7 +49,6 @@ Versi produksi aplikasi asesmen DISC berbasis PHP + SQLite.
 - `APP_BASE_PATH` untuk deploy subfolder (contoh: `/disc`).
 - `AUTO_SEED_QUESTIONS=false` (disarankan; soal dikelola dari dashboard/DB).
 - `TEST_DURATION_MINUTES`, `MIN_COMPLETION_RATIO`.
-- `TIMEOUT_SWEEP_EVERY_SECONDS`, `TIMEOUT_SWEEP_LIMIT`.
 - `HR_LOGIN_EMAIL`, `HR_PASSWORD_HASH`.
 
 ## Login HR default

@@ -113,6 +113,10 @@ function parse_bulk_questions_csv(string $raw, array $allowedRoles): array
         $optionD = trim((string) ($assoc['option_d'] ?? ''));
         $isActiveRaw = strtolower(trim((string) ($assoc['is_active'] ?? '1')));
         $isActive = in_array($isActiveRaw, ['1', 'true', 'yes', 'ya', 'aktif'], true);
+        $discA = strtoupper(trim((string) ($assoc['disc_a'] ?? 'D')));
+        $discB = strtoupper(trim((string) ($assoc['disc_b'] ?? 'I')));
+        $discC = strtoupper(trim((string) ($assoc['disc_c'] ?? 'S')));
+        $discD = strtoupper(trim((string) ($assoc['disc_d'] ?? 'C')));
 
         if (!in_array($roleKey, $allowedRoles, true)) {
             $errors[] = "Baris {$lineNo}: role '{$roleKey}' tidak valid.";
@@ -126,6 +130,13 @@ function parse_bulk_questions_csv(string $raw, array $allowedRoles): array
             $errors[] = "Baris {$lineNo}: opsi A-D minimal 3 karakter.";
             continue;
         }
+        if (!in_array($discA, ['D', 'I', 'S', 'C'], true)
+            || !in_array($discB, ['D', 'I', 'S', 'C'], true)
+            || !in_array($discC, ['D', 'I', 'S', 'C'], true)
+            || !in_array($discD, ['D', 'I', 'S', 'C'], true)) {
+            $errors[] = "Baris {$lineNo}: mapping DISC harus D/I/S/C.";
+            continue;
+        }
 
         $rows[] = [
             'line_no' => $lineNo,
@@ -135,6 +146,10 @@ function parse_bulk_questions_csv(string $raw, array $allowedRoles): array
             'option_b' => $optionB,
             'option_c' => $optionC,
             'option_d' => $optionD,
+            'disc_a' => $discA,
+            'disc_b' => $discB,
+            'disc_c' => $discC,
+            'disc_d' => $discD,
             'is_active' => $isActive,
         ];
     }
@@ -185,12 +200,12 @@ function validate_bulk_questions_rows(array $rows, array $existingKeys, string $
 function build_bulk_question_template_csv(array $roleOptions): string
 {
     $out = fopen('php://temp', 'w+');
-    fputcsv($out, ['role_key', 'order', 'option_a', 'option_b', 'option_c', 'option_d', 'is_active']);
+    fputcsv($out, ['role_key', 'order', 'option_a', 'option_b', 'option_c', 'option_d', 'disc_a', 'disc_b', 'disc_c', 'disc_d', 'is_active']);
 
     $sampleRows = [
-        [$roleOptions[0] ?? 'Floor Crew ( Server, Runner, Housekeeping )', 1, 'Tegas saat mengambil keputusan', 'Ramah pada semua orang', 'Sabar dan konsisten', 'Teliti dan rapi', 1],
-        [$roleOptions[1] ?? 'Bar Crew', 1, 'Cepat bertindak saat ramai', 'Suka membangun relasi', 'Menjaga ritme kerja stabil', 'Patuh SOP dan detail', 1],
-        [$roleOptions[2] ?? 'Kitchen Crew ( Cook, Cook Helper, Steward )', 1, 'Berani ambil inisiatif', 'Komunikatif dalam tim', 'Tenang di bawah tekanan', 'Fokus kualitas hasil', 1],
+        [$roleOptions[0] ?? 'Manager', 1, 'Tegas saat mengambil keputusan', 'Ramah pada semua orang', 'Sabar dan konsisten', 'Teliti dan rapi', 'D', 'I', 'S', 'C', 1],
+        [$roleOptions[1] ?? 'Back Office', 1, 'Cepat bertindak saat ramai', 'Suka membangun relasi', 'Menjaga ritme kerja stabil', 'Patuh SOP dan detail', 'D', 'I', 'S', 'C', 1],
+        [$roleOptions[2] ?? 'Head Kitchen', 1, 'Berani ambil inisiatif', 'Komunikatif dalam tim', 'Tenang di bawah tekanan', 'Fokus kualitas hasil', 'D', 'I', 'S', 'C', 1],
     ];
 
     foreach ($sampleRows as $row) {
