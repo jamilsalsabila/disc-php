@@ -30,8 +30,10 @@ Versi produksi aplikasi asesmen DISC berbasis PHP + SQLite.
 - UI admin lebih rapih dan konsisten:
   - mode tabel `Compact/Normal` (preferensi tersimpan di browser),
   - tabel `Kelola Soal DISC`, `Kelola Soal Esai`, dashboard, dan profil kandidat lebih compact,
+  - tabel kandidat di dashboard sudah pagination async (`10/20/50/100` baris per halaman),
   - tombol aksi diseragamkan ukurannya,
   - teks tabel yang panjang otomatis dipersingkat (ellipsis) dan tampil full saat hover tooltip,
+  - tabel Event Timeline di profil kandidat dirapikan agar lebih stabil di desktop/mobile,
   - inline style di view HR dipindah ke CSS terpusat.
 
 ## Aturan bank soal

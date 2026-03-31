@@ -5,7 +5,15 @@
   const filterForm = document.getElementById('hr-filter-form');
   const tableBody = document.getElementById('candidate-table-body');
   const timeoutRefreshBtn = document.getElementById('timeout-refresh-btn');
+  const pageInput = document.getElementById('page-input');
+  const perPageInput = document.getElementById('per-page-input');
+  const paginationMetaEl = document.getElementById('pagination-meta');
+  const pageIndicatorEl = document.getElementById('page-indicator');
+  const prevPageBtn = document.getElementById('prev-page-btn');
+  const nextPageBtn = document.getElementById('next-page-btn');
+  const perPageSelect = document.getElementById('per-page-select');
   let toastStack = null;
+  let currentPagination = window.initialPagination || { page: 1, per_page: 20, total: 0, total_pages: 1, from: 0, to: 0 };
 
   let roleChart;
   let discChart;
@@ -236,6 +244,35 @@
     renderCandidateTable(payload.candidates || []);
     renderRoleChart((payload.stats && payload.stats.roleDistribution) || []);
     renderDiscChart((payload.stats && payload.stats.avgDisc) || {});
+    renderPagination(payload.pagination || currentPagination);
+  }
+
+  function renderPagination(pagination) {
+    currentPagination = {
+      page: Number(pagination.page || 1),
+      per_page: Number(pagination.per_page || 20),
+      total: Number(pagination.total || 0),
+      total_pages: Number(pagination.total_pages || 1),
+      from: Number(pagination.from || 0),
+      to: Number(pagination.to || 0)
+    };
+
+    if (pageInput) pageInput.value = String(currentPagination.page);
+    if (perPageInput) perPageInput.value = String(currentPagination.per_page);
+    if (perPageSelect) perPageSelect.value = String(currentPagination.per_page);
+
+    if (paginationMetaEl) {
+      paginationMetaEl.textContent = `Menampilkan ${currentPagination.from}-${currentPagination.to} dari ${currentPagination.total} kandidat`;
+    }
+    if (pageIndicatorEl) {
+      pageIndicatorEl.textContent = `Halaman ${currentPagination.page} / ${currentPagination.total_pages}`;
+    }
+    if (prevPageBtn) {
+      prevPageBtn.disabled = currentPagination.page <= 1;
+    }
+    if (nextPageBtn) {
+      nextPageBtn.disabled = currentPagination.page >= currentPagination.total_pages;
+    }
   }
 
   function getToastStack() {
@@ -300,6 +337,7 @@
     const submitWithDebounce = () => {
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
+        if (pageInput) pageInput.value = '1';
         fetchAndRender();
       }, 350);
     };
@@ -308,10 +346,16 @@
       searchInput.addEventListener('input', submitWithDebounce);
     }
     if (roleSelect) {
-      roleSelect.addEventListener('change', fetchAndRender);
+      roleSelect.addEventListener('change', () => {
+        if (pageInput) pageInput.value = '1';
+        fetchAndRender();
+      });
     }
     if (recommendationSelect) {
-      recommendationSelect.addEventListener('change', fetchAndRender);
+      recommendationSelect.addEventListener('change', () => {
+        if (pageInput) pageInput.value = '1';
+        fetchAndRender();
+      });
     }
 
     filterForm.addEventListener('submit', (event) => {
@@ -324,6 +368,31 @@
         if (searchInput) searchInput.value = '';
         if (roleSelect) roleSelect.value = '';
         if (recommendationSelect) recommendationSelect.value = '';
+        if (pageInput) pageInput.value = '1';
+        fetchAndRender();
+      });
+    }
+
+    if (perPageSelect) {
+      perPageSelect.addEventListener('change', () => {
+        if (perPageInput) perPageInput.value = perPageSelect.value;
+        if (pageInput) pageInput.value = '1';
+        fetchAndRender();
+      });
+    }
+
+    if (prevPageBtn) {
+      prevPageBtn.addEventListener('click', () => {
+        const nextPage = Math.max(1, Number(pageInput ? pageInput.value : currentPagination.page) - 1);
+        if (pageInput) pageInput.value = String(nextPage);
+        fetchAndRender();
+      });
+    }
+
+    if (nextPageBtn) {
+      nextPageBtn.addEventListener('click', () => {
+        const nextPage = Math.min(currentPagination.total_pages, Number(pageInput ? pageInput.value : currentPagination.page) + 1);
+        if (pageInput) pageInput.value = String(nextPage);
         fetchAndRender();
       });
     }
@@ -409,6 +478,7 @@
 
   renderRoleChart(window.roleDistribution || []);
   renderDiscChart(window.avgDisc || {});
+  renderPagination(window.initialPagination || currentPagination);
   attachRowHandlers();
   setupLiveFilters();
   setupDeleteHandlers();

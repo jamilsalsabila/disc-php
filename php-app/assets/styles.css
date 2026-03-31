@@ -870,6 +870,50 @@ th {
   min-width: 780px;
 }
 
+.dashboard-pagination {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.dashboard-pagination-meta {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.dashboard-pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pagination-per-page {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.pagination-per-page select {
+  width: auto;
+  min-width: 72px;
+  padding: 7px 10px;
+  border-radius: 10px;
+}
+
+.pagination-page-label {
+  font-size: 12.5px;
+  color: var(--ink);
+  font-weight: 600;
+  min-width: 120px;
+  text-align: center;
+}
+
 .hr-bulk-preview {
   margin-top: 14px;
   border-top: 1px solid #e2e8f0;
@@ -886,10 +930,12 @@ th {
   padding: 7px 8px;
   font-size: 12.5px;
   line-height: 1.35;
+  vertical-align: top;
 }
 
 .admin-table .cell-clamp {
   display: block;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1031,11 +1077,21 @@ th {
   table-layout: fixed;
 }
 
+.profile-answer-table thead th {
+  background: #f8fafc;
+}
+
+.profile-answer-table tbody tr:nth-child(even) td {
+  background: #fcfdff;
+}
+
 .answer-table th,
 .answer-table td {
   padding: 8px 10px;
   font-size: 13px;
   text-align: center;
+  vertical-align: top;
+  line-height: 1.45;
 }
 
 .answer-table th:nth-child(1),
@@ -1072,24 +1128,63 @@ th {
 .essay-answer-table .pa-col-answer {
   width: 64%;
   text-align: left;
-  white-space: pre-wrap;
 }
 
-.event-answer-table .pa-col-time {
-  width: 178px;
+.essay-answer-table .cell-wrap {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.4;
+  max-width: 100%;
+}
+
+.event-answer-table .cell-clamp,
+.disc-answer-table .cell-clamp {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.profile-answer-table td,
+.profile-answer-table th {
+  overflow-wrap: anywhere;
+}
+
+.event-answer-table .pa-col-time {
+  width: 210px;
+}
+
 .event-answer-table .pa-col-phase {
-  width: 150px;
+  width: 120px;
 }
 
 .event-answer-table .pa-col-event {
-  width: 160px;
+  width: 180px;
 }
 
 .event-answer-table .pa-col-value {
   text-align: left;
+}
+
+.event-answer-table .event-time {
+  display: block;
+  max-width: 100%;
+  font-variant-numeric: tabular-nums;
+  color: #334155;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.event-answer-table .event-text {
+  display: block;
+  max-width: 100%;
 }
 
 .typing-answer-table .pa-col-no {
@@ -1281,13 +1376,21 @@ body.admin-compact .essay-question-table .eq-col-action {
     font-size: 12px;
   }
 
-  .event-answer-table .pa-col-time {
-    width: 152px;
-  }
-
   .typing-answer-table .pa-col-num,
   .typing-answer-table td.pa-col-num {
     width: 92px;
+  }
+
+  .event-answer-table .pa-col-time {
+    width: 170px;
+  }
+
+  .event-answer-table .pa-col-phase {
+    width: 110px;
+  }
+
+  .event-answer-table .pa-col-event {
+    width: 150px;
   }
 
   .floating-timer {

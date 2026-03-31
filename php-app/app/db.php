@@ -1167,7 +1167,7 @@ function list_overdue_in_progress_candidates(PDO $pdo, int $limit = 200): array
     return $stmt->fetchAll();
 }
 
-function list_candidates(PDO $pdo, array $filters = []): array
+function build_candidate_filter_sql(array $filters): array
 {
     $conditions = [];
     $params = [];
@@ -1188,8 +1188,40 @@ function list_candidates(PDO $pdo, array $filters = []): array
     }
 
     $where = empty($conditions) ? '' : ('WHERE ' . implode(' AND ', $conditions));
+    return [$where, $params];
+}
+
+function count_candidates(PDO $pdo, array $filters = []): int
+{
+    [$where, $params] = build_candidate_filter_sql($filters);
+    $stmt = $pdo->prepare("SELECT COUNT(*) AS total FROM candidates {$where}");
+    $stmt->execute($params);
+    $row = $stmt->fetch();
+    return (int) ($row['total'] ?? 0);
+}
+
+function list_candidates(PDO $pdo, array $filters = []): array
+{
+    [$where, $params] = build_candidate_filter_sql($filters);
     $stmt = $pdo->prepare("SELECT * FROM candidates {$where} ORDER BY created_at DESC");
     $stmt->execute($params);
+    return $stmt->fetchAll();
+}
+
+function list_candidates_paginated(PDO $pdo, array $filters = [], int $page = 1, int $perPage = 20): array
+{
+    $page = max(1, $page);
+    $perPage = max(1, min(100, $perPage));
+    $offset = ($page - 1) * $perPage;
+
+    [$where, $params] = build_candidate_filter_sql($filters);
+    $stmt = $pdo->prepare("SELECT * FROM candidates {$where} ORDER BY created_at DESC LIMIT :limit OFFSET :offset");
+    foreach ($params as $k => $v) {
+        $stmt->bindValue($k, $v);
+    }
+    $stmt->bindValue(':limit', $perPage, PDO::PARAM_INT);
+    $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+    $stmt->execute();
     return $stmt->fetchAll();
 }
 

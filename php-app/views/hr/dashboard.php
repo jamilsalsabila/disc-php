@@ -37,6 +37,8 @@
   <section class="filter-card">
     <form method="get" action="<?= h(route_path('/hr/dashboard')) ?>" class="filter-grid" id="hr-filter-form">
       <input type="text" name="search" placeholder="Cari nama/email/WA" value="<?= h($filters['search'] ?? '') ?>">
+      <input type="hidden" name="page" value="<?= h((string) (($pagination['page'] ?? 1))) ?>" id="page-input">
+      <input type="hidden" name="per_page" value="<?= h((string) (($pagination['per_page'] ?? 20))) ?>" id="per-page-input">
       <select name="role">
         <option value="">Semua role dipilih</option>
         <?php foreach ($role_options as $role): ?>
@@ -93,6 +95,28 @@
         <?php endif; ?>
       </tbody>
     </table>
+
+    <div class="dashboard-pagination" id="candidate-pagination">
+      <div class="dashboard-pagination-meta" id="pagination-meta">
+        Menampilkan <?= h((string) (($pagination['from'] ?? 0))) ?>-<?= h((string) (($pagination['to'] ?? 0))) ?>
+        dari <?= h((string) (($pagination['total'] ?? 0))) ?> kandidat
+      </div>
+      <div class="dashboard-pagination-controls">
+        <label for="per-page-select" class="pagination-per-page">
+          Baris
+          <select id="per-page-select">
+            <?php foreach ([10, 20, 50, 100] as $n): ?>
+              <option value="<?= h((string) $n) ?>" <?= ((int) (($pagination['per_page'] ?? 20)) === $n) ? 'selected' : '' ?>><?= h((string) $n) ?></option>
+            <?php endforeach; ?>
+          </select>
+        </label>
+        <button type="button" class="btn-secondary" id="prev-page-btn">Sebelumnya</button>
+        <span class="pagination-page-label" id="page-indicator">
+          Halaman <?= h((string) (($pagination['page'] ?? 1))) ?> / <?= h((string) (($pagination['total_pages'] ?? 1))) ?>
+        </span>
+        <button type="button" class="btn-secondary" id="next-page-btn">Berikutnya</button>
+      </div>
+    </div>
   </section>
 </main>
 
@@ -103,5 +127,6 @@
   window.avgDisc = <?= json_encode($stats['avgDisc'], JSON_UNESCAPED_UNICODE) ?>;
   window.csrfToken = <?= json_encode($csrf_token, JSON_UNESCAPED_UNICODE) ?>;
   window.routeBase = <?= json_encode(route_path(''), JSON_UNESCAPED_UNICODE) ?>;
+  window.initialPagination = <?= json_encode($pagination ?? ['page' => 1, 'per_page' => 20, 'total' => 0, 'total_pages' => 1, 'from' => 0, 'to' => 0], JSON_UNESCAPED_UNICODE) ?>;
 </script>
 <script src="<?= h(asset_path('hr-dashboard.js')) ?>"></script>

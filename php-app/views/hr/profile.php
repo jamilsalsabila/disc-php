@@ -92,7 +92,7 @@
 
   <section class="table-card answer-card">
     <h3>Jawaban DISC Kandidat</h3>
-    <table class="admin-table answer-table disc-answer-table">
+    <table class="admin-table answer-table profile-answer-table disc-answer-table">
       <thead>
         <tr>
           <th>No</th>
@@ -104,8 +104,8 @@
         <?php foreach ($question_rows as $row): ?>
           <tr>
             <td class="pa-col-no"><?= h((string) $row['id']) ?></td>
-            <td class="pa-col-most"><?= h($row['most']) ?></td>
-            <td class="pa-col-least"><?= h($row['least']) ?></td>
+            <td class="pa-col-most"><span class="cell-clamp" title="<?= h($row['most']) ?>"><?= h($row['most']) ?></span></td>
+            <td class="pa-col-least"><span class="cell-clamp" title="<?= h($row['least']) ?>"><?= h($row['least']) ?></span></td>
           </tr>
         <?php endforeach; ?>
       </tbody>
@@ -114,7 +114,7 @@
 
   <section class="table-card answer-card u-mt-12">
     <h3>Jawaban Esai Kandidat</h3>
-    <table class="admin-table answer-table essay-answer-table">
+    <table class="admin-table answer-table profile-answer-table essay-answer-table">
       <thead>
         <tr>
           <th class="pa-col-no">No</th>
@@ -127,8 +127,10 @@
           <?php foreach ($essay_rows as $row): ?>
             <tr>
               <td class="pa-col-no"><?= h((string) ((int) ($row['question_order'] ?? 0))) ?></td>
-              <td class="pa-col-question"><?= h((string) ($row['question_text'] ?? '-')) ?></td>
-              <td class="pa-col-answer"><?= h((string) ($row['answer_text'] ?? '')) ?></td>
+              <?php $essayQuestion = (string) ($row['question_text'] ?? '-'); ?>
+              <?php $essayAnswer = (string) ($row['answer_text'] ?? ''); ?>
+              <td class="pa-col-question"><span class="cell-clamp" title="<?= h($essayQuestion) ?>"><?= h($essayQuestion) ?></span></td>
+              <td class="pa-col-answer"><span class="cell-wrap" title="<?= h($essayAnswer) ?>"><?= h($essayAnswer) ?></span></td>
             </tr>
           <?php endforeach; ?>
         <?php else: ?>
@@ -140,7 +142,7 @@
 
   <section class="table-card answer-card u-mt-12">
     <h3>Event Timeline (Integritas)</h3>
-    <table class="admin-table answer-table event-answer-table">
+    <table class="admin-table answer-table profile-answer-table event-answer-table">
       <thead>
         <tr>
           <th class="pa-col-time">Waktu</th>
@@ -153,10 +155,22 @@
         <?php if (!empty($integrity_events)): ?>
           <?php foreach ($integrity_events as $ev): ?>
             <tr>
-              <td class="pa-col-time"><?= h(format_date_id((string) ($ev['created_at'] ?? ''))) ?></td>
-              <td class="pa-col-phase"><?= h((string) ($ev['phase_label'] ?? '-')) ?></td>
-              <td class="pa-col-event"><?= h((string) ($ev['event_type_label'] ?? '-')) ?></td>
-              <td class="pa-col-value"><?= h((string) ($ev['event_value_label'] ?? '-')) ?></td>
+              <?php $timeLabel = (string) format_date_id((string) ($ev['created_at'] ?? '')); ?>
+              <td class="pa-col-time">
+                <span class="event-time cell-clamp" title="<?= h($timeLabel) ?>"><?= h($timeLabel) ?></span>
+              </td>
+              <?php $phaseLabel = (string) ($ev['phase_label'] ?? '-'); ?>
+              <?php $eventLabel = (string) ($ev['event_type_label'] ?? '-'); ?>
+              <?php $valueLabel = (string) ($ev['event_value_label'] ?? '-'); ?>
+              <td class="pa-col-phase">
+                <span class="event-text cell-clamp" title="<?= h($phaseLabel) ?>"><?= h($phaseLabel) ?></span>
+              </td>
+              <td class="pa-col-event">
+                <span class="event-text cell-clamp" title="<?= h($eventLabel) ?>"><?= h($eventLabel) ?></span>
+              </td>
+              <td class="pa-col-value">
+                <span class="event-text cell-clamp" title="<?= h($valueLabel) ?>"><?= h($valueLabel) ?></span>
+              </td>
             </tr>
           <?php endforeach; ?>
         <?php else: ?>
@@ -168,7 +182,7 @@
 
   <section class="table-card answer-card u-mt-12">
     <h3>Typing Metrics (Esai)</h3>
-    <table class="admin-table answer-table typing-answer-table">
+    <table class="admin-table answer-table profile-answer-table typing-answer-table">
       <thead>
         <tr>
           <th class="pa-col-no">No</th>

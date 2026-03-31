@@ -664,6 +664,19 @@ function extract_bulk_csv_input(): string
     return '';
 }
 
+function normalize_page_param($raw): int
+{
+    $page = (int) $raw;
+    return $page > 0 ? $page : 1;
+}
+
+function normalize_per_page_param($raw): int
+{
+    $allowed = [10, 20, 50, 100];
+    $perPage = (int) $raw;
+    return in_array($perPage, $allowed, true) ? $perPage : 20;
+}
+
 if ($method === 'GET' && $path === '/') {
     $candidate = ensure_candidate_session($pdo);
     if ($candidate && $candidate['status'] === 'in_progress') {
@@ -1209,8 +1222,15 @@ if ($method === 'GET' && $path === '/hr/dashboard') {
         'role' => trim((string) ($_GET['role'] ?? '')),
         'recommendation' => trim((string) ($_GET['recommendation'] ?? '')),
     ];
+    $page = normalize_page_param($_GET['page'] ?? 1);
+    $perPage = normalize_per_page_param($_GET['per_page'] ?? 20);
+    $total = count_candidates($pdo, $filters);
+    $totalPages = max(1, (int) ceil($total / $perPage));
+    if ($page > $totalPages) {
+        $page = $totalPages;
+    }
 
-    $candidates = list_candidates($pdo, $filters);
+    $candidates = list_candidates_paginated($pdo, $filters, $page, $perPage);
     foreach ($candidates as &$candidateRow) {
         $scores = extract_role_scores_from_candidate($candidateRow);
         $candidateRow['interview_recommendation'] = interview_recommendation_label($candidateRow, $scores);
@@ -1225,6 +1245,14 @@ if ($method === 'GET' && $path === '/hr/dashboard') {
         'recommendation_options' => recommendation_options(),
         'candidates' => $candidates,
         'stats' => $stats,
+        'pagination' => [
+            'page' => $page,
+            'per_page' => $perPage,
+            'total' => $total,
+            'total_pages' => $totalPages,
+            'from' => $total > 0 ? (($page - 1) * $perPage) + 1 : 0,
+            'to' => $total > 0 ? min($total, $page * $perPage) : 0,
+        ],
     ]);
     exit;
 }
@@ -1239,8 +1267,15 @@ if ($method === 'GET' && $path === '/hr/api/candidates') {
         'role' => trim((string) ($_GET['role'] ?? '')),
         'recommendation' => trim((string) ($_GET['recommendation'] ?? '')),
     ];
+    $page = normalize_page_param($_GET['page'] ?? 1);
+    $perPage = normalize_per_page_param($_GET['per_page'] ?? 20);
+    $total = count_candidates($pdo, $filters);
+    $totalPages = max(1, (int) ceil($total / $perPage));
+    if ($page > $totalPages) {
+        $page = $totalPages;
+    }
 
-    $candidates = list_candidates($pdo, $filters);
+    $candidates = list_candidates_paginated($pdo, $filters, $page, $perPage);
     foreach ($candidates as &$candidateRow) {
         $scores = extract_role_scores_from_candidate($candidateRow);
         $candidateRow['interview_recommendation'] = interview_recommendation_label($candidateRow, $scores);
@@ -1252,6 +1287,14 @@ if ($method === 'GET' && $path === '/hr/api/candidates') {
         'candidates' => $candidates,
         'stats' => $stats,
         'filters' => $filters,
+        'pagination' => [
+            'page' => $page,
+            'per_page' => $perPage,
+            'total' => $total,
+            'total_pages' => $totalPages,
+            'from' => $total > 0 ? (($page - 1) * $perPage) + 1 : 0,
+            'to' => $total > 0 ? min($total, $page * $perPage) : 0,
+        ],
     ]);
 }
 
