@@ -7,6 +7,7 @@
     </div>
     <div class="hr-actions">
       <a href="<?= h(route_path('/hr/dashboard')) ?>" class="btn-secondary">Kembali ke Dashboard</a>
+      <a href="<?= h(route_path('/hr/essay-questions')) ?>" class="btn-secondary">Kelola Soal Esai</a>
       <a href="<?= h(route_path('/hr/questions/new')) ?>" class="btn-primary">Tambah Soal</a>
       <form method="post" action="<?= h(route_path('/hr/logout')) ?>" class="inline-form">
         <input type="hidden" name="_csrf" value="<?= h($csrf_token) ?>">

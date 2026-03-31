@@ -1,12 +1,12 @@
 <main class="hero-page">
   <section class="hero-card">
     <h1>Asesmen Kandidat Cotch</h1>
-    <p class="subtitle">Isi data diri Anda lalu lanjut ke tes berdurasi <strong>10 menit</strong>.</p>
+    <p class="subtitle">Isi data diri Anda lalu lanjut ke tes: <strong>DISC 10 menit</strong> dan <strong>Esai 15 menit</strong>.</p>
 
     <section class="info-panel">
       <h3>Informasi Penting</h3>
       <ul>
-        <li>Durasi tes adalah <strong>10 menit</strong> dan timer berjalan otomatis.</li>
+        <li>Durasi tes: <strong>DISC 10 menit</strong> lalu <strong>Esai 15 menit</strong>, masing-masing dengan timer otomatis.</li>
         <li>Setiap nomor wajib pilih <strong>1 Most</strong> dan <strong>1 Least</strong> (tidak boleh sama).</li>
         <li><strong>Most</strong> berarti paling menggambarkan diri Anda saat bekerja.</li>
         <li><strong>Least</strong> berarti paling tidak menggambarkan diri Anda saat bekerja.</li>

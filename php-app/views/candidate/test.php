@@ -11,7 +11,7 @@
     <small id="autosave-status" class="autosave-status is-idle">Autosave aktif</small>
   </div>
 
-  <form method="post" action="<?= h(route_path('/submit')) ?>" id="disc-form">
+  <form method="post" action="<?= h(route_path('/disc-submit')) ?>" id="disc-form">
     <input type="hidden" name="_csrf" value="<?= h($csrf_token) ?>">
 
     <?php if (!empty($error_message)): ?>

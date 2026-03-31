@@ -17,8 +17,11 @@
   let autosaveTimer = null;
   let autosaveInFlight = false;
   let autosaveQueued = false;
-  const progressUrl = form.action.replace(/\/submit(?:\?.*)?$/, '/progress-save');
+  const progressUrl = form.action.replace(/\/disc-submit(?:\?.*)?$/, '/progress-save');
+  const integrityUrl = form.action.replace(/\/disc-submit(?:\?.*)?$/, '/integrity-signal');
+  const eventUrl = form.action.replace(/\/disc-submit(?:\?.*)?$/, '/integrity-event');
   let toastStack = null;
+  let lastVisibilitySignalAt = 0;
 
   const questionIds = Array.from(
     new Set(
@@ -40,6 +43,7 @@
     if (diffMs <= 0) {
       countdownEl.textContent = '00:00';
       if (!hasAutoSubmitted) {
+        sendIntegrityEvent('auto_submit_timeout', 'disc');
         hasAutoSubmitted = true;
         isAutoSubmitting = true;
         form.submit();
@@ -130,6 +134,83 @@
     });
 
     return params;
+  }
+
+  function getCsrfToken() {
+    const csrfInput = form.querySelector('input[name="_csrf"]');
+    return csrfInput && csrfInput.value ? csrfInput.value : '';
+  }
+
+  function sendIntegritySignal(signal, count) {
+    if (isAutoSubmitting) {
+      return;
+    }
+
+    const csrf = getCsrfToken();
+    if (!csrf || !signal) {
+      return;
+    }
+
+    const payload = new URLSearchParams();
+    payload.set('_csrf', csrf);
+    payload.set('signal', signal);
+    payload.set('count', String(Math.max(1, Number(count || 1))));
+    const body = payload.toString();
+
+    if (navigator.sendBeacon) {
+      const blob = new Blob([body], { type: 'application/x-www-form-urlencoded; charset=UTF-8' });
+      navigator.sendBeacon(integrityUrl, blob);
+      return;
+    }
+
+    fetch(integrityUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+      },
+      credentials: 'same-origin',
+      body
+    }).catch(() => {});
+  }
+
+  function sendIntegrityEvent(eventType, eventValue, meta) {
+    if (isAutoSubmitting) {
+      return;
+    }
+
+    const csrf = getCsrfToken();
+    if (!csrf || !eventType) {
+      return;
+    }
+
+    const payload = new URLSearchParams();
+    payload.set('_csrf', csrf);
+    payload.set('phase', 'disc');
+    payload.set('event_type', eventType);
+    if (eventValue) {
+      payload.set('event_value', String(eventValue));
+    }
+    if (meta && typeof meta === 'object') {
+      try {
+        payload.set('meta_json', JSON.stringify(meta));
+      } catch (_e) {}
+    }
+
+    const body = payload.toString();
+    if (navigator.sendBeacon) {
+      const blob = new Blob([body], { type: 'application/x-www-form-urlencoded; charset=UTF-8' });
+      navigator.sendBeacon(eventUrl, blob);
+      return;
+    }
+
+    fetch(eventUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+      },
+      credentials: 'same-origin',
+      body
+    }).catch(() => {});
   }
 
   function saveProgress() {
@@ -224,8 +305,10 @@
 
   updateProgress();
   setAutosaveStatus('is-idle', 'Autosave aktif');
+  sendIntegrityEvent('page_open', 'disc');
 
   form.addEventListener('submit', (event) => {
+    sendIntegrityEvent('submit_attempt', 'disc');
     if (isAutoSubmitting) {
       return;
     }
@@ -233,6 +316,7 @@
       const state = getQuestionState(qid);
       if (!state.isValid) {
         event.preventDefault();
+        sendIntegrityEvent('invalid_submit', 'disc');
         showToast('Setiap nomor wajib memilih 1 Most dan 1 Least yang berbeda.', 'error');
         updateProgress();
         return;
@@ -244,6 +328,24 @@
     scheduleAutosave(0);
   }, 15000);
 
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'hidden') {
+      return;
+    }
+    const now = Date.now();
+    if ((now - lastVisibilitySignalAt) < 2000) {
+      return;
+    }
+    lastVisibilitySignalAt = now;
+    sendIntegritySignal('tab_switch', 1);
+    sendIntegrityEvent('tab_switch', 'hidden');
+  });
+
+  form.addEventListener('paste', () => {
+    sendIntegritySignal('paste', 1);
+    sendIntegrityEvent('paste_detected', 'disc');
+  });
+
   window.addEventListener('beforeunload', () => {
     if (isAutoSubmitting) {
       return;
@@ -252,8 +354,10 @@
     if (navigator.sendBeacon) {
       const blob = new Blob([data], { type: 'application/x-www-form-urlencoded; charset=UTF-8' });
       navigator.sendBeacon(progressUrl, blob);
+      sendIntegrityEvent('before_unload', 'disc');
       return;
     }
+    sendIntegrityEvent('before_unload', 'disc');
     saveProgress();
   });
 })();

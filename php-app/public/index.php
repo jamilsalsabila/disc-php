@@ -70,6 +70,180 @@ function question_role_options(): array
     return ['All'];
 }
 
+function essay_group_options(): array
+{
+    return ['Manager', 'Back office', 'Kitchen', 'Bar', 'Floor'];
+}
+
+function essay_group_by_selected_role(string $selectedRole): string
+{
+    $map = [
+        'Manager' => 'Manager',
+        'Back Office' => 'Back office',
+        'Head Kitchen' => 'Kitchen',
+        'Cook' => 'Kitchen',
+        'Cook Helper' => 'Kitchen',
+        'Steward' => 'Kitchen',
+        'Head Bar' => 'Bar',
+        'Mixologist' => 'Bar',
+        'Floor Captain' => 'Floor',
+        'Server' => 'Floor',
+        'Housekeeping' => 'Floor',
+    ];
+
+    return $map[$selectedRole] ?? 'Floor';
+}
+
+function interview_checklist_sections(): array
+{
+    return [
+        'Verifikasi Jawaban Esai' => [
+            'essay_restate_clear' => 'Kandidat bisa menjelaskan ulang jawaban utama dengan runtut',
+            'essay_real_examples' => 'Menyebut contoh nyata (tidak umum)',
+            'essay_personal_role' => 'Menjelaskan peran pribadi, bukan hanya tim',
+            'essay_measurable_result' => 'Menyebut hasil terukur (angka/waktu/perubahan)',
+        ],
+        'Konsistensi dengan DISC' => [
+            'disc_communication_match' => 'Gaya komunikasi sesuai profil DISC',
+            'disc_decision_match' => 'Cara mengambil keputusan sesuai role target',
+            'disc_pressure_match' => 'Respons tekanan sesuai tuntutan kerja',
+            'disc_no_major_conflict' => 'Tidak ada kontradiksi besar antara tes dan wawancara',
+        ],
+        'Role Fit Praktis' => [
+            'fit_sop' => 'Pemahaman SOP dasar posisi memadai',
+            'fit_priority' => 'Mampu menentukan prioritas kerja dengan tepat',
+            'fit_problem_solving' => 'Problem solving relevan untuk posisi',
+            'fit_teamwork' => 'Koordinasi tim dan komunikasi kerja baik',
+            'fit_service_or_accuracy' => 'Service mindset / ketelitian SOP sesuai role',
+        ],
+        'Mini Case (3-5 menit)' => [
+            'case_relevance' => 'Solusi relevan dengan kasus',
+            'case_speed' => 'Kecepatan berpikir cukup baik',
+            'case_clarity' => 'Langkah eksekusi jelas',
+            'case_risk_awareness' => 'Risiko operasional dipertimbangkan',
+            'case_decision_quality' => 'Keputusan akhir masuk akal',
+        ],
+        'Indikator Risiko' => [
+            'risk_too_generic' => 'Jawaban terlalu generik / templated',
+            'risk_followup_weak' => 'Sulit menjawab pertanyaan lanjutan',
+            'risk_inconsistent' => 'Inkonsisten antar jawaban',
+            'risk_need_reference' => 'Perlu verifikasi referensi tambahan',
+        ],
+    ];
+}
+
+function normalize_interview_checklist_input(array $raw): array
+{
+    $sections = interview_checklist_sections();
+    $result = [];
+    foreach ($sections as $items) {
+        foreach ($items as $key => $_label) {
+            $result[$key] = !empty($raw[$key]);
+        }
+    }
+    return $result;
+}
+
+function integrity_risk_from_candidate(array $candidate): array
+{
+    $tabSwitches = (int) ($candidate['integrity_tab_switches'] ?? 0);
+    $pasteCount = (int) ($candidate['integrity_paste_count'] ?? 0);
+    $score = ($tabSwitches * 2) + ($pasteCount * 3);
+
+    $level = 'Low';
+    if ($score >= 16) {
+        $level = 'High';
+    } elseif ($score >= 8) {
+        $level = 'Medium';
+    }
+
+    return [
+        'level' => $level,
+        'score' => $score,
+        'tab_switches' => $tabSwitches,
+        'paste_count' => $pasteCount,
+    ];
+}
+
+function typing_risk_from_rows(array $rows): array
+{
+    $score = 0;
+    foreach ($rows as $row) {
+        $chars = (int) ($row['total_chars'] ?? 0);
+        $keystrokes = (int) ($row['keystrokes'] ?? 0);
+        $paste = (int) ($row['paste_count'] ?? 0);
+        $activeMs = (int) ($row['active_ms'] ?? 0);
+
+        if ($chars >= 240 && $keystrokes <= 20) {
+            $score += 6;
+        }
+        if ($paste >= 2) {
+            $score += 4;
+        }
+        if ($chars >= 200 && $activeMs <= 25000) {
+            $score += 4;
+        }
+    }
+
+    $level = 'Low';
+    if ($score >= 14) {
+        $level = 'High';
+    } elseif ($score >= 7) {
+        $level = 'Medium';
+    }
+
+    return ['level' => $level, 'score' => $score];
+}
+
+function integrity_phase_label(?string $phase): string
+{
+    $map = [
+        'disc' => 'Tes DISC',
+        'essay' => 'Tes Esai',
+        'unknown' => 'Tidak diketahui',
+    ];
+    $key = strtolower(trim((string) $phase));
+    return $map[$key] ?? ((string) $phase !== '' ? (string) $phase : '-');
+}
+
+function integrity_event_label(?string $eventType): string
+{
+    $map = [
+        'candidate_start' => 'Kandidat memulai asesmen',
+        'page_open' => 'Halaman tes dibuka',
+        'submit_attempt' => 'Mencoba submit jawaban',
+        'invalid_submit' => 'Submit ditolak (jawaban belum valid)',
+        'tab_switch' => 'Berpindah tab/jendela',
+        'paste_detected' => 'Terdeteksi paste',
+        'before_unload' => 'Meninggalkan halaman',
+        'auto_submit_timeout' => 'Sistem submit otomatis (waktu habis)',
+        'phase_complete_submit' => 'Fase selesai lewat submit kandidat',
+        'phase_complete_timeout' => 'Fase selesai karena waktu habis',
+        'final_submit_timeout' => 'Submit akhir otomatis (waktu habis)',
+        'final_submit_manual' => 'Submit akhir oleh kandidat',
+        'final_submit_timeout_sweep' => 'Submit akhir otomatis (sweeper)',
+    ];
+    $key = strtolower(trim((string) $eventType));
+    return $map[$key] ?? ((string) $eventType !== '' ? (string) $eventType : '-');
+}
+
+function integrity_event_value_label(?string $eventValue): string
+{
+    $map = [
+        'identity_submitted' => 'Identitas berhasil disimpan',
+        'disc' => 'Tahap DISC',
+        'essay' => 'Tahap Esai',
+        'hidden' => 'Halaman tidak aktif (hidden)',
+        'disc_to_essay' => 'Lanjut dari DISC ke Esai',
+        'assessment_complete' => 'Asesmen selesai',
+    ];
+    $key = strtolower(trim((string) $eventValue));
+    if ($key === '') {
+        return '-';
+    }
+    return $map[$key] ?? (string) $eventValue;
+}
+
 function ensure_candidate_session(PDO $pdo): ?array
 {
     $candidateId = isset($_SESSION['candidate_id']) ? (int) $_SESSION['candidate_id'] : 0;
@@ -173,6 +347,50 @@ function parse_draft_answers_from_candidate(array $candidate): array
         ];
     }
 
+    return $answers;
+}
+
+function parse_draft_essay_answers_from_candidate(array $candidate): array
+{
+    $raw = $candidate['draft_essay_answers_json'] ?? null;
+    if (!is_string($raw) || $raw === '') {
+        return [];
+    }
+
+    $decoded = json_decode($raw, true);
+    if (!is_array($decoded)) {
+        return [];
+    }
+
+    $answers = [];
+    foreach ($decoded as $questionId => $text) {
+        $qid = (int) $questionId;
+        if ($qid <= 0) {
+            continue;
+        }
+        $value = trim((string) $text);
+        if ($value === '') {
+            continue;
+        }
+        $answers[$qid] = $value;
+    }
+
+    return $answers;
+}
+
+function build_essay_answers_from_payload(array $payload, array $essayQuestions): array
+{
+    $answers = [];
+    foreach ($essayQuestions as $question) {
+        $qid = (int) ($question['id'] ?? 0);
+        if ($qid <= 0) {
+            continue;
+        }
+        $text = trim((string) ($payload['essay_' . $qid] ?? ''));
+        if ($text !== '') {
+            $answers[$qid] = $text;
+        }
+    }
     return $answers;
 }
 
@@ -374,8 +592,7 @@ function expire_overdue_candidates(PDO $pdo, array $config): int
 
     foreach ($overdueCandidates as $candidate) {
         $draftAnswers = parse_draft_answers_from_candidate($candidate);
-        $questions = list_questions($pdo, false, null);
-        $totalQuestions = count($questions);
+        $totalQuestions = count(list_questions($pdo, false, null));
         $answeredCount = count($draftAnswers);
         $minimumRequired = (int) ceil($totalQuestions * $minRatio);
         $baseEvaluation = evaluate_candidate(to_disc_payload($draftAnswers), $candidate['selected_role'] ?? null);
@@ -383,16 +600,26 @@ function expire_overdue_candidates(PDO $pdo, array $config): int
             ? build_incomplete_evaluation($baseEvaluation, $answeredCount, $totalQuestions)
             : $baseEvaluation;
 
+        $phaseDeadline = (string) ($candidate['deadline_at'] ?? now_iso());
+        if (!empty($candidate['disc_completed_at']) && !empty($candidate['essay_deadline_at'])) {
+            $phaseDeadline = (string) $candidate['essay_deadline_at'];
+            $draftEssay = parse_draft_essay_answers_from_candidate($candidate);
+            if (!empty($draftEssay)) {
+                save_essay_answers($pdo, (int) $candidate['id'], $draftEssay);
+            }
+        }
+
         $saved = save_submission($pdo, [
             'candidate_id' => (int) $candidate['id'],
             'answers' => $draftAnswers,
-            'submitted_at' => (string) ($candidate['deadline_at'] ?? now_iso()),
-            'duration_seconds' => seconds_between((string) $candidate['started_at'], (string) $candidate['deadline_at']),
+            'submitted_at' => $phaseDeadline,
+            'duration_seconds' => seconds_between((string) $candidate['started_at'], $phaseDeadline),
             'evaluation' => $evaluation,
             'force_status' => 'timeout_submitted',
         ]);
 
         if ($saved) {
+            log_integrity_event($pdo, (int) $candidate['id'], !empty($candidate['disc_completed_at']) ? 'essay' : 'disc', 'final_submit_timeout_sweep', 'assessment_complete');
             $expiredCount++;
         }
     }
@@ -439,7 +666,10 @@ function extract_bulk_csv_input(): string
 if ($method === 'GET' && $path === '/') {
     $candidate = ensure_candidate_session($pdo);
     if ($candidate && $candidate['status'] === 'in_progress') {
-        redirect(route_path('/test'));
+        if (!empty($candidate['disc_completed_at'])) {
+            redirect(route_path('/essay-test'));
+        }
+        redirect(route_path('/disc-test'));
     }
 
     $browserToken = $_COOKIE['disc_browser_token'] ?? '';
@@ -447,7 +677,10 @@ if ($method === 'GET' && $path === '/') {
         $active = get_in_progress_candidate_by_browser_token($pdo, $browserToken);
         if ($active) {
             $_SESSION['candidate_id'] = (int) $active['id'];
-            redirect(route_path('/test'));
+            if (!empty($active['disc_completed_at'])) {
+                redirect(route_path('/essay-test'));
+            }
+            redirect(route_path('/disc-test'));
         }
     }
 
@@ -503,7 +736,10 @@ if ($method === 'POST' && $path === '/start') {
         $activeByBrowser = get_in_progress_candidate_by_browser_token($pdo, $browserToken);
         if ($activeByBrowser) {
             $_SESSION['candidate_id'] = (int) $activeByBrowser['id'];
-            redirect(route_path('/test'));
+            if (!empty($activeByBrowser['disc_completed_at'])) {
+                redirect(route_path('/essay-test'));
+            }
+            redirect(route_path('/disc-test'));
         }
     }
 
@@ -514,7 +750,10 @@ if ($method === 'POST' && $path === '/start') {
     if ($existing) {
         if ($existing['status'] === 'in_progress' && ($existing['browser_token'] ?? '') === $browserToken) {
             $_SESSION['candidate_id'] = (int) $existing['id'];
-            redirect(route_path('/test'));
+            if (!empty($existing['disc_completed_at'])) {
+                redirect(route_path('/essay-test'));
+            }
+            redirect(route_path('/disc-test'));
         }
 
         render('candidate/identity', [
@@ -539,12 +778,19 @@ if ($method === 'POST' && $path === '/start') {
         'started_at' => $startedAt,
         'deadline_at' => $deadlineAt,
     ]);
+    log_integrity_event($pdo, $candidateId, 'disc', 'candidate_start', 'identity_submitted', [
+        'selected_role' => $selectedRole,
+    ]);
 
     $_SESSION['candidate_id'] = $candidateId;
-    redirect(route_path('/test'));
+    redirect(route_path('/disc-test'));
 }
 
 if ($method === 'GET' && $path === '/test') {
+    redirect(route_path('/disc-test'));
+}
+
+if ($method === 'GET' && $path === '/disc-test') {
     $candidate = ensure_candidate_session($pdo);
     if (!$candidate) {
         redirect(route_path('/'));
@@ -552,6 +798,9 @@ if ($method === 'GET' && $path === '/test') {
 
     if ($candidate['status'] !== 'in_progress') {
         redirect(route_path('/thank-you?id=' . (int) $candidate['id']));
+    }
+    if (!empty($candidate['disc_completed_at'])) {
+        redirect(route_path('/essay-test'));
     }
 
     $questions = list_questions($pdo, false, null);
@@ -566,24 +815,12 @@ if ($method === 'GET' && $path === '/test') {
     }
 
     if (strtotime((string) $candidate['deadline_at']) <= time()) {
-        $answeredCount = count($draftAnswers);
-        $totalQuestions = count($questions);
-        $minimumRequired = (int) ceil($totalQuestions * $config['min_completion_ratio']);
-        $baseEvaluation = evaluate_candidate(to_disc_payload($draftAnswers), $candidate['selected_role']);
-        $evaluation = ($answeredCount < $minimumRequired)
-            ? build_incomplete_evaluation($baseEvaluation, $answeredCount, $totalQuestions)
-            : $baseEvaluation;
-        save_submission($pdo, [
-            'candidate_id' => (int) $candidate['id'],
-            'answers' => $draftAnswers,
-            'submitted_at' => now_iso(),
-            'duration_seconds' => seconds_between((string) $candidate['started_at'], (string) $candidate['deadline_at']),
-            'evaluation' => $evaluation,
-            'force_status' => 'timeout_submitted',
-        ]);
-
-        unset($_SESSION['candidate_id']);
-        redirect(route_path('/thank-you?id=' . (int) $candidate['id']));
+        $discCompletedAt = now_iso();
+        $essayDeadlineAt = gmdate('c', time() + ((int) ($config['essay_duration_minutes'] ?? 15) * 60));
+        update_candidate_draft_answers($pdo, (int) $candidate['id'], $draftAnswers);
+        mark_disc_completed($pdo, (int) $candidate['id'], $discCompletedAt, $essayDeadlineAt);
+        log_integrity_event($pdo, (int) $candidate['id'], 'disc', 'phase_complete_timeout', 'disc_to_essay');
+        redirect(route_path('/essay-test'));
     }
 
     render('candidate/test', [
@@ -616,7 +853,56 @@ if ($method === 'POST' && $path === '/progress-save') {
     ]);
 }
 
-if ($method === 'POST' && $path === '/submit') {
+if ($method === 'POST' && $path === '/integrity-signal') {
+    $candidate = ensure_candidate_session($pdo);
+    if (!$candidate) {
+        json_response(['ok' => false, 'message' => 'Session kandidat tidak ditemukan'], 401);
+    }
+
+    if (($candidate['status'] ?? null) !== 'in_progress') {
+        json_response(['ok' => false, 'message' => 'Tes sudah selesai'], 409);
+    }
+
+    $signal = trim((string) ($_POST['signal'] ?? ''));
+    $count = (int) ($_POST['count'] ?? 1);
+    $saved = add_candidate_integrity_signal($pdo, (int) $candidate['id'], $signal, $count);
+    if (!$saved) {
+        json_response(['ok' => false, 'message' => 'Signal tidak valid'], 422);
+    }
+
+    json_response(['ok' => true]);
+}
+
+if ($method === 'POST' && $path === '/integrity-event') {
+    $candidate = ensure_candidate_session($pdo);
+    if (!$candidate) {
+        json_response(['ok' => false, 'message' => 'Session kandidat tidak ditemukan'], 401);
+    }
+    if (($candidate['status'] ?? null) !== 'in_progress') {
+        json_response(['ok' => false, 'message' => 'Tes sudah selesai'], 409);
+    }
+
+    $phase = trim((string) ($_POST['phase'] ?? 'unknown'));
+    $eventType = trim((string) ($_POST['event_type'] ?? ''));
+    $eventValue = trim((string) ($_POST['event_value'] ?? ''));
+    $metaRaw = trim((string) ($_POST['meta_json'] ?? ''));
+    $meta = [];
+    if ($metaRaw !== '') {
+        $decoded = json_decode($metaRaw, true);
+        if (is_array($decoded)) {
+            $meta = $decoded;
+        }
+    }
+
+    if ($eventType === '') {
+        json_response(['ok' => false, 'message' => 'event_type wajib diisi'], 422);
+    }
+
+    log_integrity_event($pdo, (int) $candidate['id'], $phase, $eventType, $eventValue, $meta);
+    json_response(['ok' => true]);
+}
+
+if ($method === 'POST' && $path === '/disc-submit') {
     $candidate = ensure_candidate_session($pdo);
     if (!$candidate) {
         redirect(route_path('/'));
@@ -625,6 +911,9 @@ if ($method === 'POST' && $path === '/submit') {
     if ($candidate['status'] !== 'in_progress') {
         unset($_SESSION['candidate_id']);
         redirect(route_path('/thank-you?id=' . (int) $candidate['id']));
+    }
+    if (!empty($candidate['disc_completed_at'])) {
+        redirect(route_path('/essay-test'));
     }
 
     $questions = list_questions($pdo, false, null);
@@ -651,19 +940,181 @@ if ($method === 'POST' && $path === '/submit') {
         exit;
     }
 
-    $baseEvaluation = evaluate_candidate(to_disc_payload($answers), $candidate['selected_role']);
+    update_candidate_draft_answers($pdo, (int) $candidate['id'], $answers);
+    $discCompletedAt = $submittedAt;
+    $essayDeadlineAt = gmdate('c', time() + ((int) ($config['essay_duration_minutes'] ?? 15) * 60));
+    mark_disc_completed($pdo, (int) $candidate['id'], $discCompletedAt, $essayDeadlineAt);
+    log_integrity_event($pdo, (int) $candidate['id'], 'disc', 'phase_complete_submit', 'disc_to_essay');
+    redirect(route_path('/essay-test'));
+}
+
+if ($method === 'GET' && $path === '/essay-test') {
+    $candidate = ensure_candidate_session($pdo);
+    if (!$candidate) {
+        redirect(route_path('/'));
+    }
+    if (($candidate['status'] ?? '') !== 'in_progress') {
+        unset($_SESSION['candidate_id']);
+        redirect(route_path('/thank-you?id=' . (int) $candidate['id']));
+    }
+    if (empty($candidate['disc_completed_at'])) {
+        redirect(route_path('/disc-test'));
+    }
+
+    $group = essay_group_by_selected_role((string) ($candidate['selected_role'] ?? ''));
+    $essayQuestions = list_essay_questions($pdo, false, $group);
+    $draftEssayAnswers = parse_draft_essay_answers_from_candidate($candidate);
+    $essayDeadlineAt = (string) ($candidate['essay_deadline_at'] ?? '');
+    if ($essayDeadlineAt === '') {
+        $essayDeadlineAt = gmdate('c', time() + ((int) ($config['essay_duration_minutes'] ?? 15) * 60));
+        mark_disc_completed($pdo, (int) $candidate['id'], (string) ($candidate['disc_completed_at'] ?? now_iso()), $essayDeadlineAt);
+    }
+
+    if (strtotime($essayDeadlineAt) <= time()) {
+        $discAnswers = parse_draft_answers_from_candidate($candidate);
+        $totalQuestions = count(list_questions($pdo, false, null));
+        $answeredCount = count($discAnswers);
+        $minimumRequired = (int) ceil($totalQuestions * $config['min_completion_ratio']);
+        $baseEvaluation = evaluate_candidate(to_disc_payload($discAnswers), $candidate['selected_role'] ?? null);
+        $evaluation = ($answeredCount < $minimumRequired)
+            ? build_incomplete_evaluation($baseEvaluation, $answeredCount, $totalQuestions)
+            : $baseEvaluation;
+
+        if (!empty($draftEssayAnswers)) {
+            save_essay_answers($pdo, (int) $candidate['id'], $draftEssayAnswers);
+        }
+
+        save_submission($pdo, [
+            'candidate_id' => (int) $candidate['id'],
+            'answers' => $discAnswers,
+            'submitted_at' => $essayDeadlineAt,
+            'duration_seconds' => seconds_between((string) $candidate['started_at'], $essayDeadlineAt),
+            'evaluation' => $evaluation,
+            'force_status' => 'timeout_submitted',
+        ]);
+
+        unset($_SESSION['candidate_id']);
+        redirect(route_path('/thank-you?id=' . (int) $candidate['id']));
+    }
+
+    render('candidate/essay-test', [
+        'page_title' => 'Tes Esai',
+        'candidate' => $candidate,
+        'essay_questions' => $essayQuestions,
+        'draft_essay_answers' => $draftEssayAnswers,
+        'essay_deadline_at' => $essayDeadlineAt,
+        'essay_group' => $group,
+    ]);
+    exit;
+}
+
+if ($method === 'POST' && $path === '/essay-progress-save') {
+    $candidate = ensure_candidate_session($pdo);
+    if (!$candidate) {
+        json_response(['ok' => false, 'message' => 'Session kandidat tidak ditemukan'], 401);
+    }
+    if (($candidate['status'] ?? null) !== 'in_progress' || empty($candidate['disc_completed_at'])) {
+        json_response(['ok' => false, 'message' => 'Fase esai tidak aktif'], 409);
+    }
+
+    $group = essay_group_by_selected_role((string) ($candidate['selected_role'] ?? ''));
+    $essayQuestions = list_essay_questions($pdo, false, $group);
+    $essayAnswers = build_essay_answers_from_payload($_POST, $essayQuestions);
+    update_candidate_draft_essay_answers($pdo, (int) $candidate['id'], $essayAnswers);
+    json_response(['ok' => true, 'saved_count' => count($essayAnswers)]);
+}
+
+if ($method === 'POST' && $path === '/typing-metrics-save') {
+    $candidate = ensure_candidate_session($pdo);
+    if (!$candidate) {
+        json_response(['ok' => false, 'message' => 'Session kandidat tidak ditemukan'], 401);
+    }
+    if (($candidate['status'] ?? null) !== 'in_progress' || empty($candidate['disc_completed_at'])) {
+        json_response(['ok' => false, 'message' => 'Fase esai tidak aktif'], 409);
+    }
+
+    $metricsRaw = trim((string) ($_POST['metrics_json'] ?? ''));
+    if ($metricsRaw === '') {
+        json_response(['ok' => false, 'message' => 'metrics_json kosong'], 422);
+    }
+
+    $decoded = json_decode($metricsRaw, true);
+    if (!is_array($decoded)) {
+        json_response(['ok' => false, 'message' => 'metrics_json tidak valid'], 422);
+    }
+
+    $saved = 0;
+    foreach ($decoded as $questionId => $metric) {
+        $qid = (int) $questionId;
+        if ($qid <= 0 || !is_array($metric)) {
+            continue;
+        }
+        upsert_essay_typing_metric($pdo, (int) $candidate['id'], $qid, $metric);
+        $saved++;
+    }
+
+    json_response(['ok' => true, 'saved' => $saved]);
+}
+
+if ($method === 'POST' && ($path === '/essay-submit' || $path === '/submit')) {
+    $candidate = ensure_candidate_session($pdo);
+    if (!$candidate) {
+        redirect(route_path('/'));
+    }
+    if (($candidate['status'] ?? '') !== 'in_progress') {
+        unset($_SESSION['candidate_id']);
+        redirect(route_path('/thank-you?id=' . (int) $candidate['id']));
+    }
+    if (empty($candidate['disc_completed_at'])) {
+        redirect(route_path('/disc-test'));
+    }
+
+    $group = essay_group_by_selected_role((string) ($candidate['selected_role'] ?? ''));
+    $essayQuestions = list_essay_questions($pdo, false, $group);
+    $postedEssay = build_essay_answers_from_payload($_POST, $essayQuestions);
+    $draftEssay = parse_draft_essay_answers_from_candidate($candidate);
+    $essayAnswers = array_merge($draftEssay, $postedEssay);
+
+    $deadlineAt = (string) ($candidate['essay_deadline_at'] ?? '');
+    $expired = $deadlineAt !== '' && strtotime($deadlineAt) <= time();
+    if (!$expired && count($essayAnswers) < count($essayQuestions)) {
+        update_candidate_draft_essay_answers($pdo, (int) $candidate['id'], $essayAnswers);
+        render('candidate/essay-test', [
+            'page_title' => 'Tes Esai',
+            'candidate' => $candidate,
+            'essay_questions' => $essayQuestions,
+            'draft_essay_answers' => $essayAnswers,
+            'essay_deadline_at' => $deadlineAt,
+            'essay_group' => $group,
+            'error_message' => 'Semua pertanyaan esai wajib diisi sebelum submit.',
+        ]);
+        exit;
+    }
+
+    if (!empty($essayAnswers)) {
+        save_essay_answers($pdo, (int) $candidate['id'], $essayAnswers);
+    }
+
+    $discAnswers = parse_draft_answers_from_candidate($candidate);
+    $totalQuestions = count(list_questions($pdo, false, null));
+    $answeredCount = count($discAnswers);
+    $minimumRequired = (int) ceil($totalQuestions * $config['min_completion_ratio']);
+    $baseEvaluation = evaluate_candidate(to_disc_payload($discAnswers), $candidate['selected_role'] ?? null);
     $evaluation = ($answeredCount < $minimumRequired)
         ? build_incomplete_evaluation($baseEvaluation, $answeredCount, $totalQuestions)
         : $baseEvaluation;
 
+    $submittedAt = now_iso();
+    $effectiveEnd = ($expired && $deadlineAt !== '') ? $deadlineAt : $submittedAt;
     save_submission($pdo, [
         'candidate_id' => (int) $candidate['id'],
-        'answers' => $answers,
-        'submitted_at' => $submittedAt,
-        'duration_seconds' => seconds_between((string) $candidate['started_at'], $expired ? (string) $candidate['deadline_at'] : $submittedAt),
+        'answers' => $discAnswers,
+        'submitted_at' => $effectiveEnd,
+        'duration_seconds' => seconds_between((string) $candidate['started_at'], $effectiveEnd),
         'evaluation' => $evaluation,
         'force_status' => $expired ? 'timeout_submitted' : 'submitted',
     ]);
+    log_integrity_event($pdo, (int) $candidate['id'], 'essay', $expired ? 'final_submit_timeout' : 'final_submit_manual', 'assessment_complete');
 
     unset($_SESSION['candidate_id']);
     redirect(route_path('/thank-you?id=' . (int) $candidate['id']));
@@ -839,6 +1290,36 @@ if ($method === 'POST' && preg_match('#^/hr/candidates/(\d+)/delete$#', $path, $
     redirect(route_path('/hr/dashboard'));
 }
 
+if ($method === 'POST' && preg_match('#^/hr/candidates/(\d+)/interview-checklist$#', $path, $m)) {
+    require_hr_auth($config);
+
+    $candidateId = (int) $m[1];
+    $candidate = get_candidate_by_id($pdo, $candidateId);
+    if (!$candidate) {
+        http_response_code(404);
+        echo 'Candidate not found';
+        exit;
+    }
+
+    $finalDecision = trim((string) ($_POST['final_decision'] ?? ''));
+    $allowedDecisions = ['Lanjut User Interview', 'Lanjut Trial', 'Hold (Butuh Verifikasi)', 'Tidak Lanjut'];
+    if (!in_array($finalDecision, $allowedDecisions, true)) {
+        $finalDecision = '';
+    }
+
+    upsert_interview_checklist($pdo, $candidateId, [
+        'checklist' => normalize_interview_checklist_input($_POST),
+        'final_decision' => $finalDecision,
+        'strengths_notes' => trim((string) ($_POST['strengths_notes'] ?? '')),
+        'risk_notes' => trim((string) ($_POST['risk_notes'] ?? '')),
+        'placement_notes' => trim((string) ($_POST['placement_notes'] ?? '')),
+    ]);
+
+    $_SESSION['profile_flash_message'] = 'Checklist wawancara berhasil disimpan.';
+    $_SESSION['profile_flash_type'] = 'success';
+    redirect(route_path('/hr/candidates/' . $candidateId));
+}
+
 if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)$#', $path, $m)) {
     require_hr_auth($config);
 
@@ -851,6 +1332,18 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)$#', $path, $m)) {
 
     $answers = get_answers_for_candidate($pdo, (int) $candidate['id']);
     $questionRows = parse_candidate_profile_answers($answers);
+    $essayRows = get_essay_answer_details_for_candidate($pdo, (int) $candidate['id']);
+    $integrityEvents = list_integrity_events($pdo, (int) $candidate['id'], 250);
+    $integrityEventsDisplay = array_map(static function (array $ev): array {
+        $phase = (string) ($ev['phase'] ?? '');
+        $type = (string) ($ev['event_type'] ?? '');
+        $value = (string) ($ev['event_value'] ?? '');
+        $ev['phase_label'] = integrity_phase_label($phase);
+        $ev['event_type_label'] = integrity_event_label($type);
+        $ev['event_value_label'] = integrity_event_value_label($value);
+        return $ev;
+    }, $integrityEvents);
+    $typingMetricsRows = get_essay_typing_metrics_for_candidate($pdo, (int) $candidate['id']);
 
     $roleScoreData = [];
     $roleScoresJson = $candidate['role_scores_json'] ?? '';
@@ -872,11 +1365,28 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)$#', $path, $m)) {
         $roleScoreData[$k] = normalize_role_score_10($v);
     }
     $interviewRecommendation = interview_recommendation_label($candidate, $roleScoreData);
+    $integrityRisk = integrity_risk_from_candidate($candidate);
+    $typingRisk = typing_risk_from_rows($typingMetricsRows);
+
+    $checklistRow = get_interview_checklist($pdo, (int) $candidate['id']);
+    $savedChecklist = [];
+    if ($checklistRow && is_string($checklistRow['checklist_json'] ?? null)) {
+        $decodedChecklist = json_decode((string) $checklistRow['checklist_json'], true);
+        if (is_array($decodedChecklist)) {
+            $savedChecklist = $decodedChecklist;
+        }
+    }
+    $flashMessage = $_SESSION['profile_flash_message'] ?? null;
+    $flashType = $_SESSION['profile_flash_type'] ?? 'info';
+    unset($_SESSION['profile_flash_message'], $_SESSION['profile_flash_type']);
 
     render('hr/profile', [
         'page_title' => 'Profil Kandidat #' . $candidate['id'],
         'candidate' => $candidate,
         'question_rows' => $questionRows,
+        'essay_rows' => $essayRows,
+        'integrity_events' => $integrityEventsDisplay,
+        'typing_metrics_rows' => $typingMetricsRows,
         'disc_data' => [
             'D' => (int) ($candidate['disc_d'] ?? 0),
             'I' => (int) ($candidate['disc_i'] ?? 0),
@@ -885,6 +1395,16 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)$#', $path, $m)) {
         ],
         'role_score_data' => $roleScoreData,
         'interview_recommendation' => $interviewRecommendation,
+        'integrity_risk' => $integrityRisk,
+        'typing_risk' => $typingRisk,
+        'interview_sections' => interview_checklist_sections(),
+        'interview_saved_checklist' => $savedChecklist,
+        'interview_saved_final_decision' => (string) ($checklistRow['final_decision'] ?? ''),
+        'interview_saved_strengths_notes' => (string) ($checklistRow['strengths_notes'] ?? ''),
+        'interview_saved_risk_notes' => (string) ($checklistRow['risk_notes'] ?? ''),
+        'interview_saved_placement_notes' => (string) ($checklistRow['placement_notes'] ?? ''),
+        'flash_message' => is_string($flashMessage) ? $flashMessage : null,
+        'flash_type' => is_string($flashType) ? $flashType : 'info',
     ]);
     exit;
 }
@@ -901,10 +1421,71 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)/export/answers\.csv$
     }
 
     $rows = get_answer_details_for_candidate_export($pdo, $candidateId);
+    $essayRows = get_essay_answer_details_for_candidate($pdo, $candidateId);
+    $typingRows = get_essay_typing_metrics_for_candidate($pdo, $candidateId);
+    $integrityEventsRaw = list_integrity_events($pdo, $candidateId, 300);
+    $integrityEvents = array_map(static function (array $ev): array {
+        $phase = (string) ($ev['phase'] ?? '');
+        $type = (string) ($ev['event_type'] ?? '');
+        $value = (string) ($ev['event_value'] ?? '');
+        $ev['phase_label'] = integrity_phase_label($phase);
+        $ev['event_type_label'] = integrity_event_label($type);
+        $ev['event_value_label'] = integrity_event_value_label($value);
+        return $ev;
+    }, $integrityEventsRaw);
+    $roleScores = extract_role_scores_from_candidate($candidate);
+    $interviewRecommendation = interview_recommendation_label($candidate, $roleScores);
+    $integrityRisk = integrity_risk_from_candidate($candidate);
+    $typingRisk = typing_risk_from_rows($typingRows);
+    $checklistRow = get_interview_checklist($pdo, $candidateId);
+
+    $checkedItems = [];
+    if ($checklistRow && is_string($checklistRow['checklist_json'] ?? null)) {
+        $decodedChecklist = json_decode((string) $checklistRow['checklist_json'], true);
+        if (is_array($decodedChecklist)) {
+            foreach (interview_checklist_sections() as $items) {
+                foreach ($items as $key => $label) {
+                    if (!empty($decodedChecklist[$key])) {
+                        $checkedItems[] = (string) $label;
+                    }
+                }
+            }
+        }
+    }
+
     header('Content-Type: text/csv; charset=utf-8');
     header('Content-Disposition: attachment; filename="candidate-answers-' . $candidateId . '-' . time() . '.csv"');
 
     $out = fopen('php://output', 'w');
+    fputcsv($out, ['RINGKASAN KANDIDAT']);
+    fputcsv($out, [
+        'Candidate ID', 'Nama', 'Email', 'WA', 'Role Dipilih', 'Rekomendasi Sistem', 'Kelayakan Wawancara',
+        'Status', 'Mulai', 'Selesai', 'Durasi (detik)', 'DISC D', 'DISC I', 'DISC S', 'DISC C',
+        'Integrity Risk', 'Typing Risk', 'Final Keputusan HR',
+    ]);
+    fputcsv($out, [
+        (int) ($candidate['id'] ?? 0),
+        (string) ($candidate['full_name'] ?? ''),
+        (string) ($candidate['email'] ?? ''),
+        (string) ($candidate['whatsapp'] ?? ''),
+        (string) ($candidate['selected_role'] ?? ''),
+        map_recommendation_label($candidate['recommendation'] ?? null),
+        $interviewRecommendation,
+        (string) ($candidate['status'] ?? ''),
+        format_date_id((string) ($candidate['started_at'] ?? '')),
+        format_date_id((string) ($candidate['submitted_at'] ?? '')),
+        (int) ($candidate['duration_seconds'] ?? 0),
+        (int) ($candidate['disc_d'] ?? 0),
+        (int) ($candidate['disc_i'] ?? 0),
+        (int) ($candidate['disc_s'] ?? 0),
+        (int) ($candidate['disc_c'] ?? 0),
+        (string) ($integrityRisk['level'] ?? 'Low') . ' (tab=' . (int) ($integrityRisk['tab_switches'] ?? 0) . ', paste=' . (int) ($integrityRisk['paste_count'] ?? 0) . ')',
+        (string) ($typingRisk['level'] ?? 'Low') . ' (score=' . (int) ($typingRisk['score'] ?? 0) . ')',
+        (string) ($checklistRow['final_decision'] ?? '-'),
+    ]);
+
+    fputcsv($out, ['']);
+    fputcsv($out, ['JAWABAN DISC']);
     fputcsv($out, [
         'Candidate ID', 'Nama', 'Email', 'WA', 'Role Dipilih', 'Rekomendasi', 'Status',
         'No Soal', 'Role Soal', 'Most', 'Most Text', 'Least', 'Least Text',
@@ -928,6 +1509,53 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)/export/answers\.csv$
             answer_option_text($row, $leastCode),
         ]);
     }
+
+    fputcsv($out, ['']);
+    fputcsv($out, ['JAWABAN ESAI']);
+    fputcsv($out, ['No', 'Kelompok', 'Pertanyaan', 'Jawaban']);
+    foreach ($essayRows as $row) {
+        fputcsv($out, [
+            (int) ($row['question_order'] ?? 0),
+            (string) ($row['role_group'] ?? '-'),
+            (string) ($row['question_text'] ?? ''),
+            (string) ($row['answer_text'] ?? ''),
+        ]);
+    }
+
+    fputcsv($out, ['']);
+    fputcsv($out, ['EVENT TIMELINE']);
+    fputcsv($out, ['Waktu', 'Fase', 'Event', 'Keterangan']);
+    foreach ($integrityEvents as $ev) {
+        fputcsv($out, [
+            format_date_id((string) ($ev['created_at'] ?? '')),
+            (string) ($ev['phase_label'] ?? '-'),
+            (string) ($ev['event_type_label'] ?? '-'),
+            (string) ($ev['event_value_label'] ?? '-'),
+        ]);
+    }
+
+    fputcsv($out, ['']);
+    fputcsv($out, ['TYPING METRICS']);
+    fputcsv($out, ['No', 'Keystrokes', 'Input Events', 'Paste', 'Chars', 'Active (detik)', 'Last Input']);
+    foreach ($typingRows as $row) {
+        fputcsv($out, [
+            (int) ($row['question_order'] ?? 0),
+            (int) ($row['keystrokes'] ?? 0),
+            (int) ($row['input_events'] ?? 0),
+            (int) ($row['paste_count'] ?? 0),
+            (int) ($row['total_chars'] ?? 0),
+            round(((int) ($row['active_ms'] ?? 0)) / 1000, 1),
+            format_date_id((string) ($row['last_input_at'] ?? '')),
+        ]);
+    }
+
+    fputcsv($out, ['']);
+    fputcsv($out, ['KETERANGAN LAINNYA']);
+    fputcsv($out, ['Alasan Rekomendasi', (string) ($candidate['reason'] ?? '-')]);
+    fputcsv($out, ['Catatan Kekuatan HR', (string) ($checklistRow['strengths_notes'] ?? '-')]);
+    fputcsv($out, ['Catatan Risiko HR', (string) ($checklistRow['risk_notes'] ?? '-')]);
+    fputcsv($out, ['Saran Penempatan HR', (string) ($checklistRow['placement_notes'] ?? '-')]);
+    fputcsv($out, ['Checklist Interview (checked)', !empty($checkedItems) ? implode(' | ', $checkedItems) : '-']);
     fclose($out);
     exit;
 }
@@ -944,15 +1572,51 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)/export/answers\.pdf$
     }
 
     $rows = get_answer_details_for_candidate_export($pdo, $candidateId);
+    $essayRows = get_essay_answer_details_for_candidate($pdo, $candidateId);
+    $typingRows = get_essay_typing_metrics_for_candidate($pdo, $candidateId);
+    $integrityEventsRaw = list_integrity_events($pdo, $candidateId, 300);
+    $integrityEvents = array_map(static function (array $ev): array {
+        $phase = (string) ($ev['phase'] ?? '');
+        $type = (string) ($ev['event_type'] ?? '');
+        $value = (string) ($ev['event_value'] ?? '');
+        $ev['phase_label'] = integrity_phase_label($phase);
+        $ev['event_type_label'] = integrity_event_label($type);
+        $ev['event_value_label'] = integrity_event_value_label($value);
+        return $ev;
+    }, $integrityEventsRaw);
+    $roleScores = extract_role_scores_from_candidate($candidate);
+    $interviewRecommendation = interview_recommendation_label($candidate, $roleScores);
+    $integrityRisk = integrity_risk_from_candidate($candidate);
+    $typingRisk = typing_risk_from_rows($typingRows);
+    $checklistRow = get_interview_checklist($pdo, $candidateId);
+    $checkedItems = [];
+    if ($checklistRow && is_string($checklistRow['checklist_json'] ?? null)) {
+        $decodedChecklist = json_decode((string) $checklistRow['checklist_json'], true);
+        if (is_array($decodedChecklist)) {
+            foreach (interview_checklist_sections() as $items) {
+                foreach ($items as $key => $label) {
+                    if (!empty($decodedChecklist[$key])) {
+                        $checkedItems[] = (string) $label;
+                    }
+                }
+            }
+        }
+    }
+
     header('Content-Type: text/html; charset=utf-8');
-    echo '<!doctype html><html><head><meta charset="utf-8"><title>Jawaban Kandidat #' . h((string) $candidateId) . '</title><style>body{font-family:Arial,sans-serif;padding:20px;}h2{margin:0 0 6px;}p{margin:4px 0 12px;}table{border-collapse:collapse;width:100%;font-size:12px}th,td{border:1px solid #ddd;padding:6px;vertical-align:top;text-align:left;}th{background:#f2f2f2}</style></head><body>';
+    echo '<!doctype html><html><head><meta charset="utf-8"><title>Jawaban Kandidat #' . h((string) $candidateId) . '</title><style>body{font-family:Arial,sans-serif;padding:20px;}h2{margin:0 0 6px;}h3{margin:18px 0 8px;}p{margin:4px 0 12px;}table{border-collapse:collapse;width:100%;font-size:12px;margin-bottom:10px}th,td{border:1px solid #ddd;padding:6px;vertical-align:top;text-align:left;}th{background:#f2f2f2}</style></head><body>';
     echo '<h2>Jawaban Kandidat #' . h((string) $candidateId) . '</h2>';
     echo '<p><strong>Nama:</strong> ' . h((string) ($candidate['full_name'] ?? '-')) . '<br>';
     echo '<strong>Email:</strong> ' . h((string) ($candidate['email'] ?? '-')) . '<br>';
     echo '<strong>Role Dipilih:</strong> ' . h((string) ($candidate['selected_role'] ?? '-')) . '<br>';
     echo '<strong>Rekomendasi:</strong> ' . h(map_recommendation_label($candidate['recommendation'] ?? null)) . '<br>';
-    echo '<strong>Status:</strong> ' . h((string) ($candidate['status'] ?? '-')) . '</p>';
+    echo '<strong>Kelayakan Wawancara:</strong> ' . h($interviewRecommendation) . '<br>';
+    echo '<strong>Status:</strong> ' . h((string) ($candidate['status'] ?? '-')) . '<br>';
+    echo '<strong>Integrity Risk:</strong> ' . h((string) ($integrityRisk['level'] ?? 'Low')) . ' (tab=' . h((string) ((int) ($integrityRisk['tab_switches'] ?? 0))) . ', paste=' . h((string) ((int) ($integrityRisk['paste_count'] ?? 0))) . ')<br>';
+    echo '<strong>Typing Risk:</strong> ' . h((string) ($typingRisk['level'] ?? 'Low')) . ' (score=' . h((string) ((int) ($typingRisk['score'] ?? 0))) . ')</p>';
     echo '<p>Gunakan menu browser: Print -> Save as PDF.</p>';
+
+    echo '<h3>Jawaban DISC</h3>';
     echo '<table><thead><tr><th>No</th><th>Role Soal</th><th>Most</th><th>Least</th></tr></thead><tbody>';
     foreach ($rows as $row) {
         $mostCode = (string) ($row['most_code'] ?? '');
@@ -964,8 +1628,213 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)/export/answers\.pdf$
             . '<td><strong>' . h($leastCode !== '' ? $leastCode : '-') . '</strong><br>' . h(answer_option_text($row, $leastCode)) . '</td>'
             . '</tr>';
     }
-    echo '</tbody></table></body></html>';
+    echo '</tbody></table>';
+
+    echo '<h3>Jawaban Esai</h3>';
+    echo '<table><thead><tr><th>No</th><th>Kelompok</th><th>Pertanyaan</th><th>Jawaban</th></tr></thead><tbody>';
+    foreach ($essayRows as $row) {
+        echo '<tr>'
+            . '<td>' . h((string) ((int) ($row['question_order'] ?? 0))) . '</td>'
+            . '<td>' . h((string) ($row['role_group'] ?? '-')) . '</td>'
+            . '<td>' . h((string) ($row['question_text'] ?? '')) . '</td>'
+            . '<td>' . nl2br(h((string) ($row['answer_text'] ?? ''))) . '</td>'
+            . '</tr>';
+    }
+    echo '</tbody></table>';
+
+    echo '<h3>Event Timeline</h3>';
+    echo '<table><thead><tr><th>Waktu</th><th>Fase</th><th>Event</th><th>Keterangan</th></tr></thead><tbody>';
+    foreach ($integrityEvents as $ev) {
+        echo '<tr>'
+            . '<td>' . h(format_date_id((string) ($ev['created_at'] ?? ''))) . '</td>'
+            . '<td>' . h((string) ($ev['phase_label'] ?? '-')) . '</td>'
+            . '<td>' . h((string) ($ev['event_type_label'] ?? '-')) . '</td>'
+            . '<td>' . h((string) ($ev['event_value_label'] ?? '-')) . '</td>'
+            . '</tr>';
+    }
+    echo '</tbody></table>';
+
+    echo '<h3>Typing Metrics</h3>';
+    echo '<table><thead><tr><th>No</th><th>Keystrokes</th><th>Input</th><th>Paste</th><th>Chars</th><th>Active (detik)</th></tr></thead><tbody>';
+    foreach ($typingRows as $row) {
+        echo '<tr>'
+            . '<td>' . h((string) ((int) ($row['question_order'] ?? 0))) . '</td>'
+            . '<td>' . h((string) ((int) ($row['keystrokes'] ?? 0))) . '</td>'
+            . '<td>' . h((string) ((int) ($row['input_events'] ?? 0))) . '</td>'
+            . '<td>' . h((string) ((int) ($row['paste_count'] ?? 0))) . '</td>'
+            . '<td>' . h((string) ((int) ($row['total_chars'] ?? 0))) . '</td>'
+            . '<td>' . h((string) round(((int) ($row['active_ms'] ?? 0)) / 1000, 1)) . '</td>'
+            . '</tr>';
+    }
+    echo '</tbody></table>';
+
+    echo '<h3>Keterangan Lainnya</h3>';
+    echo '<p><strong>Alasan Rekomendasi:</strong> ' . h((string) ($candidate['reason'] ?? '-')) . '<br>';
+    echo '<strong>Final Keputusan HR:</strong> ' . h((string) ($checklistRow['final_decision'] ?? '-')) . '<br>';
+    echo '<strong>Catatan Kekuatan HR:</strong> ' . h((string) ($checklistRow['strengths_notes'] ?? '-')) . '<br>';
+    echo '<strong>Catatan Risiko HR:</strong> ' . h((string) ($checklistRow['risk_notes'] ?? '-')) . '<br>';
+    echo '<strong>Saran Penempatan HR:</strong> ' . h((string) ($checklistRow['placement_notes'] ?? '-')) . '<br>';
+    echo '<strong>Checklist Interview (checked):</strong> ' . h(!empty($checkedItems) ? implode(' | ', $checkedItems) : '-') . '</p>';
+    echo '</body></html>';
     exit;
+}
+
+if ($method === 'GET' && $path === '/hr/essay-questions') {
+    require_hr_auth($config);
+    $essayGroupOptions = essay_group_options();
+    $groupFilter = trim((string) ($_GET['group'] ?? ''));
+    if ($groupFilter !== '' && !in_array($groupFilter, $essayGroupOptions, true)) {
+        $groupFilter = '';
+    }
+
+    $flashMessage = $_SESSION['essay_questions_flash_message'] ?? null;
+    $flashType = $_SESSION['essay_questions_flash_type'] ?? 'info';
+    unset($_SESSION['essay_questions_flash_message'], $_SESSION['essay_questions_flash_type']);
+
+    render('hr/essay-questions', [
+        'page_title' => 'Kelola Soal Esai',
+        'essay_questions' => list_essay_questions($pdo, true, $groupFilter !== '' ? $groupFilter : null),
+        'essay_group_options' => $essayGroupOptions,
+        'group_filter' => $groupFilter,
+        'flash_message' => is_string($flashMessage) ? $flashMessage : null,
+        'flash_type' => is_string($flashType) ? $flashType : 'info',
+    ]);
+    exit;
+}
+
+if ($method === 'GET' && $path === '/hr/essay-questions/new') {
+    require_hr_auth($config);
+    $essayGroupOptions = essay_group_options();
+    $group = trim((string) ($_GET['group'] ?? 'Manager'));
+    if (!in_array($group, $essayGroupOptions, true)) {
+        $group = 'Manager';
+    }
+
+    render('hr/essay-question-form', [
+        'page_title' => 'Tambah Soal Esai',
+        'form_title' => 'Tambah Soal Esai',
+        'action_url' => route_path('/hr/essay-questions/new'),
+        'essay_group_options' => $essayGroupOptions,
+        'values' => [
+            'role_group' => $group,
+            'order' => get_next_essay_question_order($pdo, $group),
+            'question_text' => '',
+            'guidance_text' => '',
+            'is_active' => true,
+        ],
+    ]);
+    exit;
+}
+
+if ($method === 'POST' && $path === '/hr/essay-questions/new') {
+    require_hr_auth($config);
+    $essayGroupOptions = essay_group_options();
+
+    $payload = [
+        'role_group' => trim((string) ($_POST['role_group'] ?? '')),
+        'order' => (int) ($_POST['order'] ?? 0),
+        'question_text' => trim((string) ($_POST['question_text'] ?? '')),
+        'guidance_text' => trim((string) ($_POST['guidance_text'] ?? '')),
+        'is_active' => !empty($_POST['is_active']),
+    ];
+
+    $valid = in_array($payload['role_group'], $essayGroupOptions, true)
+        && $payload['order'] > 0
+        && mb_strlen($payload['question_text']) >= 10;
+
+    if (!$valid) {
+        render('hr/essay-question-form', [
+            'page_title' => 'Tambah Soal Esai',
+            'form_title' => 'Tambah Soal Esai',
+            'action_url' => route_path('/hr/essay-questions/new'),
+            'essay_group_options' => $essayGroupOptions,
+            'values' => $payload,
+            'error_message' => 'Kelompok role wajib valid, urutan > 0, dan pertanyaan minimal 10 karakter.',
+        ]);
+        exit;
+    }
+
+    create_essay_question($pdo, $payload);
+    $_SESSION['essay_questions_flash_message'] = 'Soal esai berhasil ditambahkan.';
+    $_SESSION['essay_questions_flash_type'] = 'success';
+    redirect(route_path('/hr/essay-questions'));
+}
+
+if ($method === 'GET' && preg_match('#^/hr/essay-questions/(\d+)/edit$#', $path, $m)) {
+    require_hr_auth($config);
+    $essayGroupOptions = essay_group_options();
+
+    $row = get_essay_question_by_id($pdo, (int) $m[1]);
+    if (!$row) {
+        http_response_code(404);
+        echo 'Essay question not found';
+        exit;
+    }
+
+    render('hr/essay-question-form', [
+        'page_title' => 'Edit Soal Esai #' . $row['id'],
+        'form_title' => 'Edit Soal Esai #' . $row['id'],
+        'action_url' => route_path('/hr/essay-questions/' . $row['id'] . '/edit'),
+        'essay_group_options' => $essayGroupOptions,
+        'values' => [
+            'role_group' => (string) ($row['role_group'] ?? 'Manager'),
+            'order' => (int) ($row['question_order'] ?? 0),
+            'question_text' => (string) ($row['question_text'] ?? ''),
+            'guidance_text' => (string) ($row['guidance_text'] ?? ''),
+            'is_active' => (int) ($row['is_active'] ?? 0) === 1,
+        ],
+    ]);
+    exit;
+}
+
+if ($method === 'POST' && preg_match('#^/hr/essay-questions/(\d+)/edit$#', $path, $m)) {
+    require_hr_auth($config);
+    $essayGroupOptions = essay_group_options();
+
+    $payload = [
+        'role_group' => trim((string) ($_POST['role_group'] ?? '')),
+        'order' => (int) ($_POST['order'] ?? 0),
+        'question_text' => trim((string) ($_POST['question_text'] ?? '')),
+        'guidance_text' => trim((string) ($_POST['guidance_text'] ?? '')),
+        'is_active' => !empty($_POST['is_active']),
+    ];
+
+    $valid = in_array($payload['role_group'], $essayGroupOptions, true)
+        && $payload['order'] > 0
+        && mb_strlen($payload['question_text']) >= 10;
+
+    if (!$valid) {
+        render('hr/essay-question-form', [
+            'page_title' => 'Edit Soal Esai #' . (int) $m[1],
+            'form_title' => 'Edit Soal Esai #' . (int) $m[1],
+            'action_url' => route_path('/hr/essay-questions/' . (int) $m[1] . '/edit'),
+            'essay_group_options' => $essayGroupOptions,
+            'values' => $payload,
+            'error_message' => 'Kelompok role wajib valid, urutan > 0, dan pertanyaan minimal 10 karakter.',
+        ]);
+        exit;
+    }
+
+    update_essay_question($pdo, (int) $m[1], $payload);
+    $_SESSION['essay_questions_flash_message'] = 'Soal esai berhasil diperbarui.';
+    $_SESSION['essay_questions_flash_type'] = 'success';
+    redirect(route_path('/hr/essay-questions'));
+}
+
+if ($method === 'POST' && preg_match('#^/hr/essay-questions/(\d+)/toggle-active$#', $path, $m)) {
+    require_hr_auth($config);
+    toggle_essay_question_active($pdo, (int) $m[1]);
+    $_SESSION['essay_questions_flash_message'] = 'Status soal esai berhasil diubah.';
+    $_SESSION['essay_questions_flash_type'] = 'success';
+    redirect(route_path('/hr/essay-questions'));
+}
+
+if ($method === 'POST' && preg_match('#^/hr/essay-questions/(\d+)/delete$#', $path, $m)) {
+    require_hr_auth($config);
+    delete_essay_question($pdo, (int) $m[1]);
+    $_SESSION['essay_questions_flash_message'] = 'Soal esai berhasil dihapus.';
+    $_SESSION['essay_questions_flash_type'] = 'success';
+    redirect(route_path('/hr/essay-questions'));
 }
 
 if ($method === 'GET' && $path === '/hr/questions') {

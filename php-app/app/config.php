@@ -101,6 +101,7 @@ return [
     'timezone' => env('APP_TIMEZONE', 'Asia/Jakarta'),
     'base_path' => detect_base_path(),
     'test_duration_minutes' => (int) env('TEST_DURATION_MINUTES', 10),
+    'essay_duration_minutes' => (int) env('ESSAY_DURATION_MINUTES', 15),
     'min_completion_ratio' => (float) env('MIN_COMPLETION_RATIO', 0.8),
     'timeout_sweep_every_seconds' => (int) env('TIMEOUT_SWEEP_EVERY_SECONDS', 20),
     'timeout_sweep_limit' => (int) env('TIMEOUT_SWEEP_LIMIT', 200),
