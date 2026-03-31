@@ -12,5 +12,6 @@
 </head>
 <body>
   <?php require dirname(__DIR__) . '/' . $view . '.php'; ?>
+  <script src="<?= h(asset_path('admin-table-toggle.js')) ?>" defer></script>
 </body>
 </html>

@@ -6,6 +6,7 @@
       <p class="subtitle">ID #<?= h((string) $candidate['id']) ?> - <?= h($candidate['email']) ?> - <?= h($candidate['whatsapp']) ?></p>
     </div>
     <div class="hr-actions">
+      <button type="button" class="btn-secondary compact-toggle-btn" data-compact-toggle aria-pressed="false">Tabel: Normal</button>
       <a href="<?= h(route_path('/hr/dashboard')) ?>" class="btn-secondary">Kembali ke Dashboard</a>
       <a href="<?= h(route_path('/hr/candidates/' . $candidate['id'] . '/export/answers.csv')) ?>" class="btn-secondary">Download Jawaban CSV</a>
       <a href="<?= h(route_path('/hr/candidates/' . $candidate['id'] . '/export/answers.pdf')) ?>" class="btn-secondary">Download Jawaban PDF</a>
@@ -25,6 +26,37 @@
       <?= h((string) $flash_message) ?>
     </div>
   <?php endif; ?>
+
+  <section class="profile-card u-mb-14">
+    <h3>Analisis AI (Deep Mode)</h3>
+    <p class="subtitle">Gunakan analisis AI untuk konklusi cepat, saran posisi, dan follow-up wawancara.</p>
+    <form method="post" action="<?= h(route_path('/hr/candidates/' . $candidate['id'] . '/ai-evaluate')) ?>" class="inline-form u-mt-10">
+      <input type="hidden" name="_csrf" value="<?= h($csrf_token) ?>">
+      <button type="submit" class="btn-primary"><?= !empty($ai_evaluation) ? 'Regenerate Analisis AI' : 'Generate Analisis AI' ?></button>
+    </form>
+
+    <?php if (!empty($ai_evaluation)): ?>
+      <div class="profile-ai-box">
+        <p><strong>Status:</strong> <?= h((string) ($ai_evaluation['status'] ?? '-')) ?></p>
+        <p><strong>Model:</strong> <?= h((string) ($ai_evaluation['model'] ?? '-')) ?></p>
+        <p><strong>Skor AI (1-10):</strong> <?= h((string) ((int) ($ai_evaluation['score_1_10'] ?? 0))) ?></p>
+        <p><strong>Saran Posisi:</strong> <?= h((string) ($ai_evaluation['suggested_position'] ?? '-')) ?></p>
+        <p><strong>Konklusi:</strong> <?= h((string) ($ai_evaluation['conclusion'] ?? '-')) ?></p>
+        <p><strong>Rationale:</strong> <?= h((string) ($ai_evaluation['rationale'] ?? '-')) ?></p>
+
+        <?php $strengths = json_decode((string) ($ai_evaluation['strengths_json'] ?? '[]'), true) ?: []; ?>
+        <?php $risks = json_decode((string) ($ai_evaluation['risks_json'] ?? '[]'), true) ?: []; ?>
+        <?php $followUps = json_decode((string) ($ai_evaluation['follow_up_json'] ?? '[]'), true) ?: []; ?>
+
+        <p><strong>Kekuatan (AI):</strong> <?= !empty($strengths) ? h(implode(' | ', array_map('strval', $strengths))) : '-' ?></p>
+        <p><strong>Risiko (AI):</strong> <?= !empty($risks) ? h(implode(' | ', array_map('strval', $risks))) : '-' ?></p>
+        <p><strong>Pertanyaan Follow-up (AI):</strong> <?= !empty($followUps) ? h(implode(' | ', array_map('strval', $followUps))) : '-' ?></p>
+        <?php if (!empty($ai_evaluation['error_message'])): ?>
+          <p><strong>Error:</strong> <?= h((string) $ai_evaluation['error_message']) ?></p>
+        <?php endif; ?>
+      </div>
+    <?php endif; ?>
+  </section>
 
   <section class="profile-grid">
     <article class="profile-card profile-summary-card">
@@ -60,7 +92,7 @@
 
   <section class="table-card answer-card">
     <h3>Jawaban DISC Kandidat</h3>
-    <table class="answer-table">
+    <table class="admin-table answer-table disc-answer-table">
       <thead>
         <tr>
           <th>No</th>
@@ -71,32 +103,32 @@
       <tbody>
         <?php foreach ($question_rows as $row): ?>
           <tr>
-            <td><?= h((string) $row['id']) ?></td>
-            <td><?= h($row['most']) ?></td>
-            <td><?= h($row['least']) ?></td>
+            <td class="pa-col-no"><?= h((string) $row['id']) ?></td>
+            <td class="pa-col-most"><?= h($row['most']) ?></td>
+            <td class="pa-col-least"><?= h($row['least']) ?></td>
           </tr>
         <?php endforeach; ?>
       </tbody>
     </table>
   </section>
 
-  <section class="table-card answer-card" style="margin-top:12px;">
+  <section class="table-card answer-card u-mt-12">
     <h3>Jawaban Esai Kandidat</h3>
-    <table class="answer-table">
+    <table class="admin-table answer-table essay-answer-table">
       <thead>
         <tr>
-          <th>No</th>
-          <th>Pertanyaan</th>
-          <th>Jawaban</th>
+          <th class="pa-col-no">No</th>
+          <th class="pa-col-question">Pertanyaan</th>
+          <th class="pa-col-answer">Jawaban</th>
         </tr>
       </thead>
       <tbody>
         <?php if (!empty($essay_rows)): ?>
           <?php foreach ($essay_rows as $row): ?>
             <tr>
-              <td><?= h((string) ((int) ($row['question_order'] ?? 0))) ?></td>
-              <td><?= h((string) ($row['question_text'] ?? '-')) ?></td>
-              <td style="text-align:left; white-space:pre-wrap;"><?= h((string) ($row['answer_text'] ?? '')) ?></td>
+              <td class="pa-col-no"><?= h((string) ((int) ($row['question_order'] ?? 0))) ?></td>
+              <td class="pa-col-question"><?= h((string) ($row['question_text'] ?? '-')) ?></td>
+              <td class="pa-col-answer"><?= h((string) ($row['answer_text'] ?? '')) ?></td>
             </tr>
           <?php endforeach; ?>
         <?php else: ?>
@@ -106,25 +138,25 @@
     </table>
   </section>
 
-  <section class="table-card answer-card" style="margin-top:12px;">
+  <section class="table-card answer-card u-mt-12">
     <h3>Event Timeline (Integritas)</h3>
-    <table class="answer-table">
+    <table class="admin-table answer-table event-answer-table">
       <thead>
         <tr>
-          <th>Waktu</th>
-          <th>Fase</th>
-          <th>Event</th>
-          <th>Nilai</th>
+          <th class="pa-col-time">Waktu</th>
+          <th class="pa-col-phase">Fase</th>
+          <th class="pa-col-event">Event</th>
+          <th class="pa-col-value">Nilai</th>
         </tr>
       </thead>
       <tbody>
         <?php if (!empty($integrity_events)): ?>
           <?php foreach ($integrity_events as $ev): ?>
             <tr>
-              <td><?= h(format_date_id((string) ($ev['created_at'] ?? ''))) ?></td>
-              <td><?= h((string) ($ev['phase_label'] ?? '-')) ?></td>
-              <td><?= h((string) ($ev['event_type_label'] ?? '-')) ?></td>
-              <td><?= h((string) ($ev['event_value_label'] ?? '-')) ?></td>
+              <td class="pa-col-time"><?= h(format_date_id((string) ($ev['created_at'] ?? ''))) ?></td>
+              <td class="pa-col-phase"><?= h((string) ($ev['phase_label'] ?? '-')) ?></td>
+              <td class="pa-col-event"><?= h((string) ($ev['event_type_label'] ?? '-')) ?></td>
+              <td class="pa-col-value"><?= h((string) ($ev['event_value_label'] ?? '-')) ?></td>
             </tr>
           <?php endforeach; ?>
         <?php else: ?>
@@ -134,29 +166,29 @@
     </table>
   </section>
 
-  <section class="table-card answer-card" style="margin-top:12px;">
+  <section class="table-card answer-card u-mt-12">
     <h3>Typing Metrics (Esai)</h3>
-    <table class="answer-table">
+    <table class="admin-table answer-table typing-answer-table">
       <thead>
         <tr>
-          <th>No</th>
-          <th>Keystrokes</th>
-          <th>Input Events</th>
-          <th>Paste</th>
-          <th>Chars</th>
-          <th>Active (detik)</th>
+          <th class="pa-col-no">No</th>
+          <th class="pa-col-num">Keystrokes</th>
+          <th class="pa-col-num">Input Events</th>
+          <th class="pa-col-num">Paste</th>
+          <th class="pa-col-num">Chars</th>
+          <th class="pa-col-active">Active (detik)</th>
         </tr>
       </thead>
       <tbody>
         <?php if (!empty($typing_metrics_rows)): ?>
           <?php foreach ($typing_metrics_rows as $row): ?>
             <tr>
-              <td><?= h((string) ((int) ($row['question_order'] ?? 0))) ?></td>
-              <td><?= h((string) ((int) ($row['keystrokes'] ?? 0))) ?></td>
-              <td><?= h((string) ((int) ($row['input_events'] ?? 0))) ?></td>
-              <td><?= h((string) ((int) ($row['paste_count'] ?? 0))) ?></td>
-              <td><?= h((string) ((int) ($row['total_chars'] ?? 0))) ?></td>
-              <td><?= h((string) round(((int) ($row['active_ms'] ?? 0)) / 1000, 1)) ?></td>
+              <td class="pa-col-no"><?= h((string) ((int) ($row['question_order'] ?? 0))) ?></td>
+              <td class="pa-col-num"><?= h((string) ((int) ($row['keystrokes'] ?? 0))) ?></td>
+              <td class="pa-col-num"><?= h((string) ((int) ($row['input_events'] ?? 0))) ?></td>
+              <td class="pa-col-num"><?= h((string) ((int) ($row['paste_count'] ?? 0))) ?></td>
+              <td class="pa-col-num"><?= h((string) ((int) ($row['total_chars'] ?? 0))) ?></td>
+              <td class="pa-col-active"><?= h((string) round(((int) ($row['active_ms'] ?? 0)) / 1000, 1)) ?></td>
             </tr>
           <?php endforeach; ?>
         <?php else: ?>
@@ -166,19 +198,19 @@
     </table>
   </section>
 
-  <section class="profile-card" style="margin-bottom:14px;">
+  <section class="profile-card u-mb-14">
     <h3>Checklist Wawancara HR</h3>
     <p class="subtitle">Isi checklist ini saat interview tatap muka untuk verifikasi jawaban kandidat.</p>
 
-    <form method="post" action="<?= h(route_path('/hr/candidates/' . $candidate['id'] . '/interview-checklist')) ?>" class="identity-form" style="margin-top:12px;">
+    <form method="post" action="<?= h(route_path('/hr/candidates/' . $candidate['id'] . '/interview-checklist')) ?>" class="identity-form u-mt-12">
       <input type="hidden" name="_csrf" value="<?= h($csrf_token) ?>">
 
       <?php foreach (($interview_sections ?? []) as $sectionTitle => $items): ?>
-        <div style="border:1px solid #e2e8f0;border-radius:12px;padding:10px;">
-          <p style="font-weight:700;margin-bottom:8px;"><?= h((string) $sectionTitle) ?></p>
-          <div style="display:grid;gap:8px;">
+        <div class="profile-interview-box">
+          <p class="profile-interview-title"><?= h((string) $sectionTitle) ?></p>
+          <div class="profile-interview-grid">
             <?php foreach ($items as $key => $label): ?>
-              <label class="check-inline" style="margin:0;">
+              <label class="check-inline u-m-0">
                 <input type="checkbox" name="<?= h((string) $key) ?>" value="1" <?= !empty($interview_saved_checklist[$key]) ? 'checked' : '' ?>>
                 <?= h((string) $label) ?>
               </label>

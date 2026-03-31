@@ -5,6 +5,7 @@
       <h1>Dashboard DISC Kandidat</h1>
     </div>
     <div class="hr-actions">
+      <button type="button" class="btn-secondary compact-toggle-btn" data-compact-toggle aria-pressed="false">Tabel: Normal</button>
       <button type="button" class="btn-secondary" id="timeout-refresh-btn">Refresh Status</button>
       <a href="<?= h(route_path('/hr/questions')) ?>" class="btn-secondary">Kelola Soal DISC</a>
       <a href="<?= h(route_path('/hr/essay-questions')) ?>" class="btn-secondary">Kelola Soal Esai</a>
@@ -53,29 +54,33 @@
   </section>
 
   <section class="table-card">
-    <table>
+    <table class="admin-table dashboard-table">
       <thead>
         <tr>
-          <th>ID</th>
-          <th>Nama</th>
-          <th>Role Dipilih</th>
-          <th>Rekomendasi</th>
-          <th>Kelayakan Wawancara</th>
-          <th>Status</th>
-          <th>Aksi</th>
+          <th class="db-col-id">ID</th>
+          <th class="db-col-name">Nama</th>
+          <th class="db-col-role">Role Dipilih</th>
+          <th class="db-col-reco">Rekomendasi</th>
+          <th class="db-col-interview">Kelayakan Wawancara</th>
+          <th class="db-col-status">Status</th>
+          <th class="db-col-action">Aksi</th>
         </tr>
       </thead>
       <tbody id="candidate-table-body">
         <?php if (!empty($candidates)): ?>
           <?php foreach ($candidates as $candidate): ?>
             <tr class="candidate-row" data-href="<?= h(route_path('/hr/candidates/' . $candidate['id'])) ?>">
-              <td>#<?= h((string) $candidate['id']) ?></td>
-              <td><strong><?= h($candidate['full_name']) ?></strong><br><small><?= h($candidate['email']) ?></small></td>
-              <td><?= h($candidate['selected_role']) ?></td>
-              <td><?= h(map_recommendation_label($candidate['recommendation'])) ?></td>
-              <td><?= h($candidate['interview_recommendation'] ?? '-') ?></td>
-              <td><?= h($candidate['status']) ?></td>
-              <td>
+              <td class="db-col-id">#<?= h((string) $candidate['id']) ?></td>
+              <td class="db-col-name">
+                <strong class="cell-clamp" title="<?= h($candidate['full_name']) ?>"><?= h($candidate['full_name']) ?></strong>
+                <br>
+                <small class="cell-clamp" title="<?= h($candidate['email']) ?>"><?= h($candidate['email']) ?></small>
+              </td>
+              <td class="db-col-role"><span class="cell-clamp" title="<?= h($candidate['selected_role']) ?>"><?= h($candidate['selected_role']) ?></span></td>
+              <td class="db-col-reco"><span class="cell-clamp" title="<?= h(map_recommendation_label($candidate['recommendation'])) ?>"><?= h(map_recommendation_label($candidate['recommendation'])) ?></span></td>
+              <td class="db-col-interview"><span class="cell-clamp" title="<?= h($candidate['interview_recommendation'] ?? '-') ?>"><?= h($candidate['interview_recommendation'] ?? '-') ?></span></td>
+              <td class="db-col-status"><?= h($candidate['status']) ?></td>
+              <td class="db-col-action">
                 <div class="table-actions">
                   <a href="<?= h(route_path('/hr/candidates/' . $candidate['id'])) ?>" class="table-link btn-detail action-btn">Detail Profil</a>
                   <button type="button" class="btn-danger-outline delete-candidate-btn action-btn" data-id="<?= h((string) $candidate['id']) ?>" data-name="<?= h($candidate['full_name']) ?>">Hapus</button>

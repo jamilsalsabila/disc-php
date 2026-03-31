@@ -20,6 +20,7 @@ require_once dirname(__DIR__) . '/app/helpers.php';
 require_once dirname(__DIR__) . '/app/db.php';
 require_once dirname(__DIR__) . '/app/scoring.php';
 require_once dirname(__DIR__) . '/app/auth.php';
+require_once dirname(__DIR__) . '/app/ai.php';
 
 set_security_headers($config);
 
@@ -1320,6 +1321,60 @@ if ($method === 'POST' && preg_match('#^/hr/candidates/(\d+)/interview-checklist
     redirect(route_path('/hr/candidates/' . $candidateId));
 }
 
+if ($method === 'POST' && preg_match('#^/hr/candidates/(\d+)/ai-evaluate$#', $path, $m)) {
+    require_hr_auth($config);
+
+    $candidateId = (int) $m[1];
+    $candidate = get_candidate_by_id($pdo, $candidateId);
+    if (!$candidate) {
+        http_response_code(404);
+        echo 'Candidate not found';
+        exit;
+    }
+
+    $ready = ai_can_evaluate($config);
+    if (!$ready['ok']) {
+        $_SESSION['profile_flash_message'] = (string) ($ready['message'] ?? 'Evaluasi AI belum siap.');
+        $_SESSION['profile_flash_type'] = 'error';
+        redirect(route_path('/hr/candidates/' . $candidateId));
+    }
+
+    $payload = build_ai_payload_for_candidate($pdo, $candidate);
+    $result = run_openai_deep_evaluation($config, $payload);
+    if (!$result['ok']) {
+        upsert_ai_evaluation($pdo, $candidateId, [
+            'model' => (string) ($result['model'] ?? ($config['openai_model'] ?? 'gpt-5.4')),
+            'status' => 'error',
+            'error_message' => (string) ($result['error'] ?? 'AI evaluation failed'),
+            'payload' => $payload,
+            'raw_response' => $result['raw_response'] ?? [],
+        ]);
+        $_SESSION['profile_flash_message'] = 'Evaluasi AI gagal: ' . (string) ($result['error'] ?? 'Unknown error');
+        $_SESSION['profile_flash_type'] = 'error';
+        redirect(route_path('/hr/candidates/' . $candidateId));
+    }
+
+    $parsed = is_array($result['parsed'] ?? null) ? $result['parsed'] : [];
+    upsert_ai_evaluation($pdo, $candidateId, [
+        'model' => (string) ($result['model'] ?? ($config['openai_model'] ?? 'gpt-5.4')),
+        'status' => 'success',
+        'score_1_10' => (int) ($parsed['score_1_10'] ?? 0),
+        'suggested_position' => (string) ($parsed['suggested_position'] ?? ''),
+        'conclusion' => (string) ($parsed['conclusion'] ?? ''),
+        'rationale' => (string) ($parsed['rationale'] ?? ''),
+        'strengths' => is_array($parsed['strengths'] ?? null) ? $parsed['strengths'] : [],
+        'risks' => is_array($parsed['risks'] ?? null) ? $parsed['risks'] : [],
+        'follow_up_questions' => is_array($parsed['follow_up_questions'] ?? null) ? $parsed['follow_up_questions'] : [],
+        'payload' => $payload,
+        'raw_response' => $result['raw_response'] ?? [],
+        'error_message' => '',
+    ]);
+
+    $_SESSION['profile_flash_message'] = 'Evaluasi AI berhasil di-generate.';
+    $_SESSION['profile_flash_type'] = 'success';
+    redirect(route_path('/hr/candidates/' . $candidateId));
+}
+
 if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)$#', $path, $m)) {
     require_hr_auth($config);
 
@@ -1344,6 +1399,7 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)$#', $path, $m)) {
         return $ev;
     }, $integrityEvents);
     $typingMetricsRows = get_essay_typing_metrics_for_candidate($pdo, (int) $candidate['id']);
+    $aiEvaluation = get_ai_evaluation_by_candidate($pdo, (int) $candidate['id']);
 
     $roleScoreData = [];
     $roleScoresJson = $candidate['role_scores_json'] ?? '';
@@ -1387,6 +1443,7 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)$#', $path, $m)) {
         'essay_rows' => $essayRows,
         'integrity_events' => $integrityEventsDisplay,
         'typing_metrics_rows' => $typingMetricsRows,
+        'ai_evaluation' => $aiEvaluation,
         'disc_data' => [
             'D' => (int) ($candidate['disc_d'] ?? 0),
             'I' => (int) ($candidate['disc_i'] ?? 0),

@@ -6,6 +6,7 @@
       <p class="subtitle">Tambah, edit, hapus, dan aktif/nonaktifkan soal esai kandidat.</p>
     </div>
     <div class="hr-actions">
+      <button type="button" class="btn-secondary compact-toggle-btn" data-compact-toggle aria-pressed="false">Tabel: Normal</button>
       <a href="<?= h(route_path('/hr/dashboard')) ?>" class="btn-secondary">Kembali ke Dashboard</a>
       <a href="<?= h(route_path('/hr/questions')) ?>" class="btn-secondary">Kelola Soal DISC</a>
       <a href="<?= h(route_path('/hr/essay-questions/new')) ?>" class="btn-primary">Tambah Soal Esai</a>
@@ -23,7 +24,7 @@
   <?php endif; ?>
 
   <section class="table-card">
-    <form method="get" action="<?= h(route_path('/hr/essay-questions')) ?>" class="filter-grid" style="grid-template-columns: 1fr auto auto;">
+    <form method="get" action="<?= h(route_path('/hr/essay-questions')) ?>" class="filter-grid hr-essay-filter-grid">
       <select name="group">
         <option value="">Semua kelompok role</option>
         <?php foreach (($essay_group_options ?? []) as $group): ?>
@@ -34,8 +35,8 @@
       <a href="<?= h(route_path('/hr/essay-questions')) ?>" class="btn-secondary">Reset</a>
     </form>
 
-    <div style="height:10px;"></div>
-    <table>
+    <div class="u-space-10"></div>
+    <table class="admin-table essay-question-table">
       <thead>
         <tr>
           <th>ID</th>
@@ -51,22 +52,29 @@
         <?php if (!empty($essay_questions)): ?>
           <?php foreach ($essay_questions as $q): ?>
             <tr>
-              <td>#<?= h((string) $q['id']) ?></td>
-              <td><?= h((string) ($q['role_group'] ?? '-')) ?></td>
-              <td><?= h((string) $q['order']) ?></td>
-              <td><?= h($q['question_text']) ?></td>
-              <td><?= h($q['guidance_text'] !== '' ? $q['guidance_text'] : '-') ?></td>
+              <td class="eq-col-id">#<?= h((string) $q['id']) ?></td>
+              <td class="eq-col-group"><?= h((string) ($q['role_group'] ?? '-')) ?></td>
+              <td class="eq-col-order"><?= h((string) $q['order']) ?></td>
+              <td class="eq-col-question">
+                <span class="cell-clamp" title="<?= h($q['question_text']) ?>"><?= h($q['question_text']) ?></span>
+              </td>
+              <td class="eq-col-guidance">
+                <?php $guide = $q['guidance_text'] !== '' ? $q['guidance_text'] : '-'; ?>
+                <span class="cell-clamp" title="<?= h($guide) ?>"><?= h($guide) ?></span>
+              </td>
               <td><?= $q['is_active'] ? '<span class="badge-success">Aktif</span>' : '<span class="badge-muted">Nonaktif</span>' ?></td>
-              <td>
-                <a href="<?= h(route_path('/hr/essay-questions/' . $q['id'] . '/edit')) ?>" class="table-link btn-detail">Edit</a>
+              <td class="eq-col-action">
+                <div class="table-actions">
+                  <a href="<?= h(route_path('/hr/essay-questions/' . $q['id'] . '/edit')) ?>" class="table-link btn-detail action-btn">Edit</a>
                 <form method="post" action="<?= h(route_path('/hr/essay-questions/' . $q['id'] . '/toggle-active')) ?>" class="inline-form">
                   <input type="hidden" name="_csrf" value="<?= h($csrf_token) ?>">
-                  <button type="submit" class="btn-secondary btn-xs"><?= $q['is_active'] ? 'Nonaktifkan' : 'Aktifkan' ?></button>
+                  <button type="submit" class="btn-secondary btn-xs action-btn"><?= $q['is_active'] ? 'Nonaktifkan' : 'Aktifkan' ?></button>
                 </form>
                 <form method="post" action="<?= h(route_path('/hr/essay-questions/' . $q['id'] . '/delete')) ?>" class="inline-form" onsubmit="return confirm('Hapus soal esai ini?');">
                   <input type="hidden" name="_csrf" value="<?= h($csrf_token) ?>">
-                  <button type="submit" class="btn-danger-outline btn-xs">Hapus</button>
+                  <button type="submit" class="btn-danger-outline btn-xs action-btn">Hapus</button>
                 </form>
+                </div>
               </td>
             </tr>
           <?php endforeach; ?>

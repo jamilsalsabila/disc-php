@@ -105,6 +105,11 @@ return [
     'min_completion_ratio' => (float) env('MIN_COMPLETION_RATIO', 0.8),
     'timeout_sweep_every_seconds' => (int) env('TIMEOUT_SWEEP_EVERY_SECONDS', 20),
     'timeout_sweep_limit' => (int) env('TIMEOUT_SWEEP_LIMIT', 200),
+    'ai_evaluation_enabled' => strtolower((string) env('AI_EVALUATION_ENABLED', 'false')) === 'true',
+    'openai_api_key' => (string) env('OPENAI_API_KEY', ''),
+    'openai_model' => (string) env('OPENAI_MODEL', 'gpt-5.4'),
+    'openai_timeout_seconds' => (int) env('OPENAI_TIMEOUT_SECONDS', 60),
+    'openai_max_retries' => (int) env('OPENAI_MAX_RETRIES', 2),
     'auto_seed_questions' => strtolower((string) env('AUTO_SEED_QUESTIONS', 'false')) === 'true',
     'role_options' => [
         'Manager',

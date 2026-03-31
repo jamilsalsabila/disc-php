@@ -163,6 +163,28 @@ function migrate(PDO $pdo, array $config): void
     );
 
     $pdo->exec(
+        "CREATE TABLE IF NOT EXISTS ai_evaluations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            candidate_id INTEGER NOT NULL UNIQUE,
+            model TEXT NOT NULL,
+            status TEXT NOT NULL,
+            score_1_10 INTEGER,
+            suggested_position TEXT,
+            conclusion TEXT,
+            rationale TEXT,
+            strengths_json TEXT,
+            risks_json TEXT,
+            follow_up_json TEXT,
+            payload_json TEXT,
+            raw_response_json TEXT,
+            error_message TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(candidate_id) REFERENCES candidates(id)
+        );"
+    );
+
+    $pdo->exec(
         "CREATE TABLE IF NOT EXISTS essay_questions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             role_group TEXT NOT NULL DEFAULT 'Manager',
@@ -185,6 +207,7 @@ function migrate(PDO $pdo, array $config): void
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_interview_checklist_candidate ON interview_checklists(candidate_id);');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_integrity_events_candidate ON integrity_events(candidate_id, created_at);');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_typing_metrics_candidate ON essay_typing_metrics(candidate_id, essay_question_id);');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_ai_eval_candidate ON ai_evaluations(candidate_id);');
 
     ensure_questions_role_column($pdo);
     ensure_questions_disc_columns($pdo);
@@ -1047,6 +1070,85 @@ function get_essay_typing_metrics_for_candidate(PDO $pdo, int $candidateId): arr
     return $stmt->fetchAll();
 }
 
+function get_ai_evaluation_by_candidate(PDO $pdo, int $candidateId): ?array
+{
+    $stmt = $pdo->prepare('SELECT * FROM ai_evaluations WHERE candidate_id = ? LIMIT 1');
+    $stmt->execute([$candidateId]);
+    $row = $stmt->fetch();
+    return $row ?: null;
+}
+
+function upsert_ai_evaluation(PDO $pdo, int $candidateId, array $payload): void
+{
+    $existing = get_ai_evaluation_by_candidate($pdo, $candidateId);
+    $now = now_iso();
+
+    $base = [
+        'model' => (string) ($payload['model'] ?? ''),
+        'status' => (string) ($payload['status'] ?? 'error'),
+        'score_1_10' => isset($payload['score_1_10']) ? (int) $payload['score_1_10'] : null,
+        'suggested_position' => (string) ($payload['suggested_position'] ?? ''),
+        'conclusion' => (string) ($payload['conclusion'] ?? ''),
+        'rationale' => (string) ($payload['rationale'] ?? ''),
+        'strengths_json' => json_encode($payload['strengths'] ?? [], JSON_UNESCAPED_UNICODE),
+        'risks_json' => json_encode($payload['risks'] ?? [], JSON_UNESCAPED_UNICODE),
+        'follow_up_json' => json_encode($payload['follow_up_questions'] ?? [], JSON_UNESCAPED_UNICODE),
+        'payload_json' => json_encode($payload['payload'] ?? [], JSON_UNESCAPED_UNICODE),
+        'raw_response_json' => json_encode($payload['raw_response'] ?? [], JSON_UNESCAPED_UNICODE),
+        'error_message' => (string) ($payload['error_message'] ?? ''),
+    ];
+
+    if ($existing) {
+        $stmt = $pdo->prepare(
+            'UPDATE ai_evaluations
+             SET model = ?, status = ?, score_1_10 = ?, suggested_position = ?, conclusion = ?, rationale = ?,
+                 strengths_json = ?, risks_json = ?, follow_up_json = ?, payload_json = ?, raw_response_json = ?,
+                 error_message = ?, updated_at = ?
+             WHERE candidate_id = ?'
+        );
+        $stmt->execute([
+            $base['model'],
+            $base['status'],
+            $base['score_1_10'],
+            $base['suggested_position'],
+            $base['conclusion'],
+            $base['rationale'],
+            $base['strengths_json'],
+            $base['risks_json'],
+            $base['follow_up_json'],
+            $base['payload_json'],
+            $base['raw_response_json'],
+            $base['error_message'],
+            $now,
+            $candidateId,
+        ]);
+        return;
+    }
+
+    $stmt = $pdo->prepare(
+        'INSERT INTO ai_evaluations
+            (candidate_id, model, status, score_1_10, suggested_position, conclusion, rationale, strengths_json, risks_json, follow_up_json, payload_json, raw_response_json, error_message, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    );
+    $stmt->execute([
+        $candidateId,
+        $base['model'],
+        $base['status'],
+        $base['score_1_10'],
+        $base['suggested_position'],
+        $base['conclusion'],
+        $base['rationale'],
+        $base['strengths_json'],
+        $base['risks_json'],
+        $base['follow_up_json'],
+        $base['payload_json'],
+        $base['raw_response_json'],
+        $base['error_message'],
+        $now,
+        $now,
+    ]);
+}
+
 function list_overdue_in_progress_candidates(PDO $pdo, int $limit = 200): array
 {
     $safeLimit = max(1, min($limit, 1000));
@@ -1161,6 +1263,9 @@ function list_answer_details_for_export(PDO $pdo): array
 function delete_candidate(PDO $pdo, int $id): bool
 {
     $pdo->beginTransaction();
+
+    $stmtAi = $pdo->prepare('DELETE FROM ai_evaluations WHERE candidate_id = ?');
+    $stmtAi->execute([$id]);
 
     $stmtEvent = $pdo->prepare('DELETE FROM integrity_events WHERE candidate_id = ?');
     $stmtEvent->execute([$id]);

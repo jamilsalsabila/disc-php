@@ -13,6 +13,9 @@ Versi produksi aplikasi asesmen DISC berbasis PHP + SQLite.
 - Integritas tes versi lanjutan:
   - event timeline kandidat (phase events),
   - typing pattern metrics untuk jawaban esai (keystroke/input/paste/active time).
+- Integrasi evaluasi AI (opsional):
+  - tombol `Generate/Regenerate Analisis AI` di profil kandidat,
+  - menyimpan skor AI, konklusi, saran posisi, strengths/risks/follow-up.
 - CRUD soal manual.
 - CRUD bank soal esai (manual) untuk persiapan asesmen tulisan.
   - Kelompok soal esai: `Manager`, `Back office`, `Kitchen`, `Bar`, `Floor`.
@@ -24,6 +27,11 @@ Versi produksi aplikasi asesmen DISC berbasis PHP + SQLite.
   - export error report CSV.
 - Export data kandidat dan jawaban.
   - Export per kandidat (CSV/PDF) mencakup: ringkasan, jawaban DISC, jawaban esai, event timeline, typing metrics, dan catatan HR.
+- UI admin lebih rapih dan konsisten:
+  - mode tabel `Compact/Normal` (preferensi tersimpan di browser),
+  - tabel `Kelola Soal DISC`, `Kelola Soal Esai`, dashboard, dan profil kandidat lebih compact,
+  - tombol aksi diseragamkan ukurannya,
+  - inline style di view HR dipindah ke CSS terpusat.
 
 ## Aturan bank soal
 
@@ -66,6 +74,12 @@ Versi produksi aplikasi asesmen DISC berbasis PHP + SQLite.
 - `AUTO_SEED_QUESTIONS=false` (disarankan; soal dikelola dari dashboard/DB).
 - `TEST_DURATION_MINUTES`, `ESSAY_DURATION_MINUTES`, `MIN_COMPLETION_RATIO`.
 - `HR_LOGIN_EMAIL`, `HR_PASSWORD_HASH`.
+- Untuk AI evaluation:
+  - `AI_EVALUATION_ENABLED=true`
+  - `OPENAI_API_KEY=...`
+  - `OPENAI_MODEL=gpt-5.4`
+  - `OPENAI_TIMEOUT_SECONDS=60`
+  - `OPENAI_MAX_RETRIES=2`
 
 ## Login HR default
 
@@ -78,3 +92,17 @@ Versi produksi aplikasi asesmen DISC berbasis PHP + SQLite.
 - PHP extension `pdo_sqlite` wajib aktif.
 - Folder `storage/` harus writable oleh web server.
 - Jangan overwrite file database produksi: `storage/disc_app.sqlite`.
+
+## File upload aman (tanpa ganggu data kandidat)
+
+Untuk update fitur/tampilan tanpa merusak data kandidat lama, upload/replace:
+
+- `public/`
+- `views/`
+- `app/` (kecuali file env lokal)
+- `assets/` (jika dipakai pada setup hosting Anda)
+
+Jangan overwrite:
+
+- `storage/disc_app.sqlite` (database produksi)
+- `.env` produksi
