@@ -202,21 +202,27 @@
     }
 
     tableBody.innerHTML = candidates.map((candidate) => {
+      const name = escapeHtml(candidate.full_name);
+      const email = escapeHtml(candidate.email);
+      const selectedRole = escapeHtml(candidate.selected_role);
+      const recommendation = escapeHtml(mapRec(candidate.recommendation));
+      const interviewRecommendation = escapeHtml(candidate.interview_recommendation || '-');
+      const status = escapeHtml(candidate.status || '-');
       return `
         <tr class="candidate-row" data-href="${withBase(`/hr/candidates/${candidate.id}`)}">
-          <td>#${candidate.id}</td>
-          <td>
-            <strong>${escapeHtml(candidate.full_name)}</strong><br>
-            <small>${escapeHtml(candidate.email)}</small>
+          <td class="db-col-id">#${candidate.id}</td>
+          <td class="db-col-name">
+            <strong class="cell-clamp" title="${name}">${name}</strong><br>
+            <small class="cell-clamp" title="${email}">${email}</small>
           </td>
-          <td>${escapeHtml(candidate.selected_role)}</td>
-          <td>${escapeHtml(mapRec(candidate.recommendation))}</td>
-          <td>${escapeHtml(candidate.interview_recommendation || '-')}</td>
-          <td>${escapeHtml(candidate.status)}</td>
-          <td>
+          <td class="db-col-role"><span class="cell-clamp" title="${selectedRole}">${selectedRole}</span></td>
+          <td class="db-col-reco"><span class="cell-clamp" title="${recommendation}">${recommendation}</span></td>
+          <td class="db-col-interview"><span class="cell-clamp" title="${interviewRecommendation}">${interviewRecommendation}</span></td>
+          <td class="db-col-status"><span class="cell-clamp" title="${status}">${status}</span></td>
+          <td class="db-col-action">
             <div class="table-actions">
               <a href="${withBase(`/hr/candidates/${candidate.id}`)}" class="table-link btn-detail action-btn">Detail Profil</a>
-              <button type="button" class="btn-danger-outline delete-candidate-btn action-btn" data-id="${candidate.id}" data-name="${escapeHtml(candidate.full_name)}">Hapus</button>
+              <button type="button" class="btn-danger-outline delete-candidate-btn action-btn" data-id="${candidate.id}" data-name="${name}">Hapus</button>
             </div>
           </td>
         </tr>

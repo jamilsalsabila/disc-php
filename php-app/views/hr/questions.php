@@ -84,7 +84,11 @@
                 <td class="dq-col-option"><span class="cell-clamp" title="<?= h((string) ($row['option_b'] ?? '')) ?>"><?= h((string) ($row['option_b'] ?? '')) ?></span></td>
                 <td class="dq-col-option"><span class="cell-clamp" title="<?= h((string) ($row['option_c'] ?? '')) ?>"><?= h((string) ($row['option_c'] ?? '')) ?></span></td>
                 <td class="dq-col-option"><span class="cell-clamp" title="<?= h((string) ($row['option_d'] ?? '')) ?>"><?= h((string) ($row['option_d'] ?? '')) ?></span></td>
-                <td class="dq-col-status"><?= !empty($row['is_active']) ? '1' : '0' ?></td>
+                <td class="dq-col-status">
+                  <span class="cell-clamp" title="<?= !empty($row['is_active']) ? '1' : '0' ?>">
+                    <?= !empty($row['is_active']) ? '1' : '0' ?>
+                  </span>
+                </td>
               </tr>
             <?php endforeach; ?>
           </tbody>
@@ -135,7 +139,10 @@
                   <span class="cell-clamp" title="<?= h($q['optionD']) ?>">D. <?= h($q['optionD']) ?></span>
                 </div>
               </td>
-              <td class="dq-col-status"><?= $q['is_active'] ? '<span class="badge-success">Aktif</span>' : '<span class="badge-muted">Nonaktif</span>' ?></td>
+              <?php $statusLabel = $q['is_active'] ? 'Aktif' : 'Nonaktif'; ?>
+              <td class="dq-col-status" title="<?= h($statusLabel) ?>">
+                <?= $q['is_active'] ? '<span class="badge-success">Aktif</span>' : '<span class="badge-muted">Nonaktif</span>' ?>
+              </td>
               <td class="dq-col-action">
                 <div class="table-actions">
                 <a href="<?= h(route_path('/hr/questions/' . $q['id'] . '/edit')) ?>" class="table-link btn-detail action-btn">Edit</a>

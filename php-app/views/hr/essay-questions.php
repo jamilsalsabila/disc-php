@@ -62,7 +62,10 @@
                 <?php $guide = $q['guidance_text'] !== '' ? $q['guidance_text'] : '-'; ?>
                 <span class="cell-clamp" title="<?= h($guide) ?>"><?= h($guide) ?></span>
               </td>
-              <td><?= $q['is_active'] ? '<span class="badge-success">Aktif</span>' : '<span class="badge-muted">Nonaktif</span>' ?></td>
+              <?php $essayStatusLabel = $q['is_active'] ? 'Aktif' : 'Nonaktif'; ?>
+              <td title="<?= h($essayStatusLabel) ?>">
+                <?= $q['is_active'] ? '<span class="badge-success">Aktif</span>' : '<span class="badge-muted">Nonaktif</span>' ?>
+              </td>
               <td class="eq-col-action">
                 <div class="table-actions">
                   <a href="<?= h(route_path('/hr/essay-questions/' . $q['id'] . '/edit')) ?>" class="table-link btn-detail action-btn">Edit</a>

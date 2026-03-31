@@ -79,7 +79,7 @@
               <td class="db-col-role"><span class="cell-clamp" title="<?= h($candidate['selected_role']) ?>"><?= h($candidate['selected_role']) ?></span></td>
               <td class="db-col-reco"><span class="cell-clamp" title="<?= h(map_recommendation_label($candidate['recommendation'])) ?>"><?= h(map_recommendation_label($candidate['recommendation'])) ?></span></td>
               <td class="db-col-interview"><span class="cell-clamp" title="<?= h($candidate['interview_recommendation'] ?? '-') ?>"><?= h($candidate['interview_recommendation'] ?? '-') ?></span></td>
-              <td class="db-col-status"><?= h($candidate['status']) ?></td>
+              <td class="db-col-status"><span class="cell-clamp" title="<?= h($candidate['status']) ?>"><?= h($candidate['status']) ?></span></td>
               <td class="db-col-action">
                 <div class="table-actions">
                   <a href="<?= h(route_path('/hr/candidates/' . $candidate['id'])) ?>" class="table-link btn-detail action-btn">Detail Profil</a>
