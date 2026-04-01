@@ -881,6 +881,67 @@ function delete_essay_question(PDO $pdo, int $id): bool
     return $stmt->rowCount() > 0;
 }
 
+function get_essay_question_group_order_keys(PDO $pdo): array
+{
+    $rows = $pdo->query('SELECT role_group, question_order FROM essay_questions')->fetchAll();
+    $keys = [];
+    foreach ($rows as $row) {
+        $key = (string) ($row['role_group'] ?? '') . '||' . (int) ($row['question_order'] ?? 0);
+        $keys[$key] = true;
+    }
+    return $keys;
+}
+
+function create_essay_questions_bulk(PDO $pdo, array $rows, bool $replaceExistingPerGroup = false): int
+{
+    if (empty($rows)) {
+        return 0;
+    }
+
+    $pdo->beginTransaction();
+    try {
+        if ($replaceExistingPerGroup) {
+            $groups = [];
+            foreach ($rows as $row) {
+                $group = trim((string) ($row['role_group'] ?? ''));
+                if ($group !== '') {
+                    $groups[$group] = true;
+                }
+            }
+
+            if (!empty($groups)) {
+                $deleteStmt = $pdo->prepare('DELETE FROM essay_questions WHERE role_group = ?');
+                foreach (array_keys($groups) as $group) {
+                    $deleteStmt->execute([$group]);
+                }
+            }
+        }
+
+        $insertStmt = $pdo->prepare('INSERT INTO essay_questions (role_group, question_order, question_text, guidance_text, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)');
+        $now = now_iso();
+        $inserted = 0;
+
+        foreach ($rows as $row) {
+            $insertStmt->execute([
+                trim((string) ($row['role_group'] ?? 'Manager')),
+                (int) ($row['order'] ?? 0),
+                trim((string) ($row['question_text'] ?? '')),
+                trim((string) ($row['guidance_text'] ?? '')),
+                !empty($row['is_active']) ? 1 : 0,
+                $now,
+                $now,
+            ]);
+            $inserted++;
+        }
+
+        $pdo->commit();
+        return $inserted;
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        throw $e;
+    }
+}
+
 function create_candidate(PDO $pdo, array $payload): int
 {
     $stmt = $pdo->prepare('INSERT INTO candidates (browser_token, full_name, email, email_key, whatsapp, whatsapp_key, selected_role, status, started_at, deadline_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');

@@ -24,6 +24,101 @@
   <?php endif; ?>
 
   <section class="table-card">
+    <h3 class="u-mb-10">Bulk Upload Soal Esai (CSV)</h3>
+    <p class="subtitle u-mb-10">Gunakan template CSV bawaan agar format konsisten per kelompok role.</p>
+    <div class="hr-actions u-mb-10">
+      <a href="<?= h(route_path('/hr/essay-questions/template.csv')) ?>" class="btn-secondary">Download Template CSV</a>
+      <?php if (!empty($bulk_error_count)): ?>
+        <a href="<?= h(route_path('/hr/essay-questions/bulk-errors.csv')) ?>" class="btn-secondary">Download Error CSV (<?= h((string) $bulk_error_count) ?>)</a>
+      <?php endif; ?>
+    </div>
+    <form method="post" action="<?= h(route_path('/hr/essay-questions/bulk-preview')) ?>" enctype="multipart/form-data">
+      <input type="hidden" name="_csrf" value="<?= h($csrf_token) ?>">
+      <div class="filter-grid hr-bulk-grid">
+        <div>
+          <label for="bulk_csv_file"><strong>Upload file .csv</strong></label>
+          <input id="bulk_csv_file" type="file" name="bulk_csv_file" accept=".csv,text/csv" class="u-mt-6">
+        </div>
+        <div>
+          <label for="import_mode"><strong>Mode import</strong></label>
+          <select id="import_mode" name="import_mode" class="u-mt-6">
+            <option value="append" <?= (($bulk_preview_mode ?? 'append') === 'append') ? 'selected' : '' ?>>Append (tambah, tidak boleh tabrakan urutan)</option>
+            <option value="replace" <?= (($bulk_preview_mode ?? 'append') === 'replace') ? 'selected' : '' ?>>Replace per kelompok role (hapus lalu isi ulang group terkait)</option>
+          </select>
+        </div>
+      </div>
+      <label for="bulk_csv" class="u-block u-mt-10"><strong>Atau tempel CSV di sini</strong></label>
+      <textarea id="bulk_csv" name="bulk_csv" rows="8" placeholder="role_group,order,question_text,guidance_text,is_active" class="u-mt-6"></textarea>
+      <div class="hr-actions u-mt-10">
+        <button type="submit" class="btn-primary">Preview Bulk</button>
+      </div>
+    </form>
+
+    <?php if (!empty($bulk_preview_rows)): ?>
+      <div class="hr-bulk-preview">
+        <h3 class="u-mb-8">Preview Import Soal Esai</h3>
+        <p class="subtitle u-mb-8">
+          Total baris valid: <?= h((string) ($bulk_preview_total ?? count($bulk_preview_rows))) ?> |
+          Mode: <?= h(($bulk_preview_mode ?? 'append') === 'replace' ? 'Replace per kelompok role' : 'Append') ?>
+        </p>
+        <?php if (!empty($bulk_preview_summary) && is_array($bulk_preview_summary)): ?>
+          <p class="subtitle u-mb-10">
+            Ringkasan:
+            <?php
+              $parts = [];
+              foreach ($bulk_preview_summary as $group => $count) {
+                  $parts[] = (string) $group . ': ' . (int) $count;
+              }
+              echo h(implode(' | ', $parts));
+            ?>
+          </p>
+        <?php endif; ?>
+
+        <table class="admin-table essay-question-table">
+          <thead>
+            <tr>
+              <th>Kelompok</th>
+              <th>Urutan</th>
+              <th>Pertanyaan Esai</th>
+              <th>Panduan Jawaban</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <?php foreach ($bulk_preview_rows as $row): ?>
+              <tr>
+                <td class="eq-col-group"><?= h((string) ($row['role_group'] ?? '-')) ?></td>
+                <td class="eq-col-order"><?= h((string) ((int) ($row['order'] ?? 0))) ?></td>
+                <td class="eq-col-question">
+                  <span class="cell-clamp" title="<?= h((string) ($row['question_text'] ?? '')) ?>"><?= h((string) ($row['question_text'] ?? '')) ?></span>
+                </td>
+                <td class="eq-col-guidance">
+                  <?php $guide = trim((string) ($row['guidance_text'] ?? '')) !== '' ? (string) ($row['guidance_text'] ?? '') : '-'; ?>
+                  <span class="cell-clamp" title="<?= h($guide) ?>"><?= h($guide) ?></span>
+                </td>
+                <td><?= !empty($row['is_active']) ? '<span class="badge-success">Aktif</span>' : '<span class="badge-muted">Nonaktif</span>' ?></td>
+              </tr>
+            <?php endforeach; ?>
+          </tbody>
+        </table>
+
+        <form method="post" action="<?= h(route_path('/hr/essay-questions/bulk-import-confirm')) ?>" class="u-mt-10">
+          <input type="hidden" name="_csrf" value="<?= h($csrf_token) ?>">
+          <div class="hr-actions">
+            <button type="submit" class="btn-primary" onclick="return confirm('Lanjutkan import soal esai sesuai preview ini?');">Konfirmasi Import</button>
+          </div>
+        </form>
+        <form method="post" action="<?= h(route_path('/hr/essay-questions/bulk-preview-clear')) ?>" class="u-mt-8">
+          <input type="hidden" name="_csrf" value="<?= h($csrf_token) ?>">
+          <div class="hr-actions">
+            <button type="submit" class="btn-secondary">Hapus Preview</button>
+          </div>
+        </form>
+      </div>
+    <?php endif; ?>
+  </section>
+
+  <section class="table-card">
     <form method="get" action="<?= h(route_path('/hr/essay-questions')) ?>" class="filter-grid hr-essay-filter-grid">
       <select name="group">
         <option value="">Semua kelompok role</option>

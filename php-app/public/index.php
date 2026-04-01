@@ -1813,6 +1813,14 @@ if ($method === 'GET' && $path === '/hr/essay-questions') {
     $flashType = $_SESSION['essay_questions_flash_type'] ?? 'info';
     unset($_SESSION['essay_questions_flash_message'], $_SESSION['essay_questions_flash_type']);
 
+    $bulkPreviewRows = $_SESSION['essay_questions_bulk_preview_rows'] ?? [];
+    $bulkPreviewMode = $_SESSION['essay_questions_bulk_preview_mode'] ?? 'append';
+    $bulkPreviewSummary = $_SESSION['essay_questions_bulk_preview_summary'] ?? [];
+    $bulkPreviewTotal = $_SESSION['essay_questions_bulk_preview_total'] ?? 0;
+    $bulkErrorCount = isset($_SESSION['essay_questions_bulk_errors']) && is_array($_SESSION['essay_questions_bulk_errors'])
+        ? count($_SESSION['essay_questions_bulk_errors'])
+        : 0;
+
     $page = normalize_page_param($_GET['page'] ?? 1);
     $perPage = normalize_per_page_param($_GET['per_page'] ?? 20);
     $sortBy = normalize_essay_sort_by($_GET['sort_by'] ?? 'default');
@@ -1840,6 +1848,11 @@ if ($method === 'GET' && $path === '/hr/essay-questions') {
         ],
         'flash_message' => is_string($flashMessage) ? $flashMessage : null,
         'flash_type' => is_string($flashType) ? $flashType : 'info',
+        'bulk_preview_rows' => is_array($bulkPreviewRows) ? array_slice($bulkPreviewRows, 0, 10) : [],
+        'bulk_preview_mode' => is_string($bulkPreviewMode) ? $bulkPreviewMode : 'append',
+        'bulk_preview_summary' => is_array($bulkPreviewSummary) ? $bulkPreviewSummary : [],
+        'bulk_preview_total' => (int) $bulkPreviewTotal,
+        'bulk_error_count' => $bulkErrorCount,
     ]);
     exit;
 }
@@ -1983,6 +1996,135 @@ if ($method === 'POST' && preg_match('#^/hr/essay-questions/(\d+)/delete$#', $pa
     require_hr_auth($config);
     delete_essay_question($pdo, (int) $m[1]);
     $_SESSION['essay_questions_flash_message'] = 'Soal esai berhasil dihapus.';
+    $_SESSION['essay_questions_flash_type'] = 'success';
+    redirect(route_path('/hr/essay-questions'));
+}
+
+if ($method === 'GET' && $path === '/hr/essay-questions/template.csv') {
+    require_hr_auth($config);
+
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="template-soal-esai.csv"');
+    echo build_bulk_essay_question_template_csv(essay_group_options());
+    exit;
+}
+
+if ($method === 'GET' && $path === '/hr/essay-questions/bulk-errors.csv') {
+    require_hr_auth($config);
+
+    $errors = $_SESSION['essay_questions_bulk_errors'] ?? [];
+    if (!is_array($errors) || empty($errors)) {
+        http_response_code(404);
+        echo 'Tidak ada error preview untuk diunduh.';
+        exit;
+    }
+
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="bulk-import-essay-errors-' . time() . '.csv"');
+    $out = fopen('php://output', 'w');
+    fputcsv($out, ['No', 'Pesan Error']);
+    foreach (array_values($errors) as $idx => $message) {
+        fputcsv($out, [$idx + 1, (string) $message]);
+    }
+    fclose($out);
+    exit;
+}
+
+if ($method === 'POST' && $path === '/hr/essay-questions/bulk-preview-clear') {
+    require_hr_auth($config);
+    unset(
+        $_SESSION['essay_questions_bulk_preview_rows'],
+        $_SESSION['essay_questions_bulk_preview_mode'],
+        $_SESSION['essay_questions_bulk_preview_summary'],
+        $_SESSION['essay_questions_bulk_preview_total'],
+        $_SESSION['essay_questions_bulk_errors']
+    );
+    $_SESSION['essay_questions_flash_message'] = 'Preview import esai telah dibersihkan.';
+    $_SESSION['essay_questions_flash_type'] = 'success';
+    redirect(route_path('/hr/essay-questions'));
+}
+
+if ($method === 'POST' && $path === '/hr/essay-questions/bulk-preview') {
+    require_hr_auth($config);
+    $essayGroupOptions = essay_group_options();
+
+    $csvRaw = extract_bulk_csv_input();
+    if ($csvRaw === '') {
+        unset($_SESSION['essay_questions_bulk_preview_rows'], $_SESSION['essay_questions_bulk_preview_mode'], $_SESSION['essay_questions_bulk_preview_summary'], $_SESSION['essay_questions_bulk_preview_total']);
+        $_SESSION['essay_questions_bulk_errors'] = ['Import gagal: isi CSV kosong. Tempel CSV atau upload file .csv.'];
+        $_SESSION['essay_questions_flash_message'] = 'Import gagal: isi CSV kosong. Tempel CSV atau upload file .csv.';
+        $_SESSION['essay_questions_flash_type'] = 'error';
+        redirect(route_path('/hr/essay-questions'));
+    }
+
+    $importMode = trim((string) ($_POST['import_mode'] ?? 'append'));
+    if (!in_array($importMode, ['append', 'replace'], true)) {
+        $importMode = 'append';
+    }
+
+    $parsed = parse_bulk_essay_questions_csv($csvRaw, $essayGroupOptions);
+    $rows = $parsed['rows'] ?? [];
+    $errors = $parsed['errors'] ?? [];
+    $existingKeys = get_essay_question_group_order_keys($pdo);
+    $errors = array_merge($errors, validate_bulk_essay_questions_rows($rows, $existingKeys, $importMode));
+
+    if (!empty($errors)) {
+        unset($_SESSION['essay_questions_bulk_preview_rows'], $_SESSION['essay_questions_bulk_preview_mode'], $_SESSION['essay_questions_bulk_preview_summary'], $_SESSION['essay_questions_bulk_preview_total']);
+        $_SESSION['essay_questions_bulk_errors'] = $errors;
+        $firstFive = array_slice($errors, 0, 5);
+        $_SESSION['essay_questions_flash_message'] = 'Preview gagal: ' . implode(' | ', $firstFive);
+        $_SESSION['essay_questions_flash_type'] = 'error';
+        redirect(route_path('/hr/essay-questions'));
+    }
+
+    $_SESSION['essay_questions_bulk_preview_rows'] = $rows;
+    $_SESSION['essay_questions_bulk_preview_mode'] = $importMode;
+    $_SESSION['essay_questions_bulk_preview_summary'] = summarize_bulk_essay_questions_by_group($rows);
+    $_SESSION['essay_questions_bulk_preview_total'] = count($rows);
+    unset($_SESSION['essay_questions_bulk_errors']);
+    $_SESSION['essay_questions_flash_message'] = 'Preview bulk esai siap. Silakan cek data lalu klik Konfirmasi Import.';
+    $_SESSION['essay_questions_flash_type'] = 'success';
+    redirect(route_path('/hr/essay-questions'));
+}
+
+if ($method === 'POST' && $path === '/hr/essay-questions/bulk-import-confirm') {
+    require_hr_auth($config);
+
+    $rows = $_SESSION['essay_questions_bulk_preview_rows'] ?? [];
+    $importMode = $_SESSION['essay_questions_bulk_preview_mode'] ?? 'append';
+    if (!is_array($rows) || empty($rows)) {
+        $_SESSION['essay_questions_flash_message'] = 'Tidak ada data preview untuk diimport. Jalankan preview dulu.';
+        $_SESSION['essay_questions_flash_type'] = 'error';
+        redirect(route_path('/hr/essay-questions'));
+    }
+
+    if (!in_array($importMode, ['append', 'replace'], true)) {
+        $importMode = 'append';
+    }
+
+    $existingKeys = get_essay_question_group_order_keys($pdo);
+    $errors = validate_bulk_essay_questions_rows($rows, $existingKeys, $importMode);
+    if (!empty($errors)) {
+        unset($_SESSION['essay_questions_bulk_preview_rows'], $_SESSION['essay_questions_bulk_preview_mode'], $_SESSION['essay_questions_bulk_preview_summary'], $_SESSION['essay_questions_bulk_preview_total']);
+        $_SESSION['essay_questions_bulk_errors'] = $errors;
+        $firstFive = array_slice($errors, 0, 5);
+        $_SESSION['essay_questions_flash_message'] = 'Import dibatalkan: ' . implode(' | ', $firstFive);
+        $_SESSION['essay_questions_flash_type'] = 'error';
+        redirect(route_path('/hr/essay-questions'));
+    }
+
+    $replaceExisting = ($importMode === 'replace');
+    $inserted = create_essay_questions_bulk($pdo, $rows, $replaceExisting);
+    $summary = summarize_bulk_essay_questions_by_group($rows);
+    $parts = [];
+    foreach ($summary as $group => $count) {
+        $parts[] = "{$group}: {$count}";
+    }
+
+    unset($_SESSION['essay_questions_bulk_preview_rows'], $_SESSION['essay_questions_bulk_preview_mode'], $_SESSION['essay_questions_bulk_preview_summary'], $_SESSION['essay_questions_bulk_preview_total']);
+    unset($_SESSION['essay_questions_bulk_errors']);
+    $_SESSION['essay_questions_flash_message'] = "Berhasil import {$inserted} soal esai (" . implode(', ', $parts) . ').'
+        . ($replaceExisting ? ' Mode: replace per kelompok role.' : ' Mode: append.');
     $_SESSION['essay_questions_flash_type'] = 'success';
     redirect(route_path('/hr/essay-questions'));
 }

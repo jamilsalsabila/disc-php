@@ -24,9 +24,11 @@ Versi produksi aplikasi asesmen DISC berbasis PHP + SQLite.
 - Bulk upload soal via CSV:
   - download template,
   - preview sebelum import,
-  - mode `append` / `replace semua soal`,
+  - mode `append` / `replace`,
   - validasi duplikasi `order`,
   - export error report CSV.
+  - tersedia untuk `Kelola Soal DISC` dan `Kelola Soal Esai`.
+  - khusus soal esai: teks `\n` di CSV otomatis dikonversi menjadi baris baru saat import.
 - Export data kandidat dan jawaban.
   - Export per kandidat (CSV/PDF) mencakup: ringkasan, jawaban DISC, jawaban esai, event timeline, typing metrics, dan catatan HR.
 - UI admin lebih rapih dan konsisten:
