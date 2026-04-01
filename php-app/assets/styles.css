@@ -849,6 +849,17 @@ th {
   min-height: 32px;
 }
 
+.bulk-select-col {
+  display: none;
+  width: 40px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.bulk-select-col input[type="checkbox"] {
+  margin: 0;
+}
+
 .candidate-row {
   cursor: pointer;
 }

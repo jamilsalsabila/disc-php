@@ -699,6 +699,13 @@ function build_essay_next_order_map(PDO $pdo, array $groups): array
     return $map;
 }
 
+function parse_bulk_ids_csv(string $raw): array
+{
+    $parts = array_filter(array_map('trim', explode(',', $raw)), static fn ($v) => $v !== '');
+    $ids = array_map('intval', $parts);
+    return array_values(array_unique(array_filter($ids, static fn ($id) => $id > 0)));
+}
+
 if ($method === 'GET' && $path === '/') {
     $candidate = ensure_candidate_session($pdo);
     if ($candidate && $candidate['status'] === 'in_progress') {
@@ -2000,6 +2007,21 @@ if ($method === 'POST' && preg_match('#^/hr/essay-questions/(\d+)/delete$#', $pa
     redirect(route_path('/hr/essay-questions'));
 }
 
+if ($method === 'POST' && $path === '/hr/essay-questions/bulk-delete') {
+    require_hr_auth($config);
+    $ids = parse_bulk_ids_csv((string) ($_POST['ids_csv'] ?? ''));
+    if (empty($ids)) {
+        $_SESSION['essay_questions_flash_message'] = 'Pilih minimal 1 soal esai.';
+        $_SESSION['essay_questions_flash_type'] = 'error';
+        redirect(route_path('/hr/essay-questions'));
+    }
+
+    $deleted = delete_essay_questions_bulk($pdo, $ids);
+    $_SESSION['essay_questions_flash_message'] = "Berhasil menghapus {$deleted} soal esai.";
+    $_SESSION['essay_questions_flash_type'] = 'success';
+    redirect(route_path('/hr/essay-questions'));
+}
+
 if ($method === 'GET' && $path === '/hr/essay-questions/template.csv') {
     require_hr_auth($config);
 
@@ -2442,6 +2464,21 @@ if ($method === 'POST' && preg_match('#^/hr/questions/(\d+)/toggle-active$#', $p
 if ($method === 'POST' && preg_match('#^/hr/questions/(\d+)/delete$#', $path, $m)) {
     require_hr_auth($config);
     delete_question($pdo, (int) $m[1]);
+    redirect(route_path('/hr/questions'));
+}
+
+if ($method === 'POST' && $path === '/hr/questions/bulk-delete') {
+    require_hr_auth($config);
+    $ids = parse_bulk_ids_csv((string) ($_POST['ids_csv'] ?? ''));
+    if (empty($ids)) {
+        $_SESSION['questions_flash_message'] = 'Pilih minimal 1 soal DISC.';
+        $_SESSION['questions_flash_type'] = 'error';
+        redirect(route_path('/hr/questions'));
+    }
+
+    $deleted = delete_questions_bulk($pdo, $ids);
+    $_SESSION['questions_flash_message'] = "Berhasil menghapus {$deleted} soal DISC.";
+    $_SESSION['questions_flash_type'] = 'success';
     redirect(route_path('/hr/questions'));
 }
 

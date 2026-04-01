@@ -152,9 +152,18 @@
     </form>
 
     <div class="u-space-10"></div>
+    <div class="hr-actions u-mb-10">
+      <button type="button" id="essay-select-all-btn" class="btn-secondary">Pilih Semua</button>
+      <form id="essay-bulk-delete-form" method="post" action="<?= h(route_path('/hr/essay-questions/bulk-delete')) ?>" class="inline-form">
+        <input type="hidden" name="_csrf" value="<?= h($csrf_token) ?>">
+        <input type="hidden" name="ids_csv" id="essay-selected-ids" value="">
+        <button type="button" id="essay-delete-selected-btn" class="btn-danger-outline" disabled>Delete</button>
+      </form>
+    </div>
     <table class="admin-table essay-question-table">
       <thead>
         <tr>
+          <th class="bulk-select-col">Pilih</th>
           <th>ID</th>
           <th>Kelompok</th>
           <th>Urutan</th>
@@ -168,6 +177,13 @@
         <?php if (!empty($essay_questions)): ?>
           <?php foreach ($essay_questions as $q): ?>
             <tr>
+              <td class="bulk-select-col">
+                <input
+                  type="checkbox"
+                  class="essay-row-checkbox"
+                  data-id="<?= h((string) $q['id']) ?>"
+                >
+              </td>
               <td class="eq-col-id">#<?= h((string) $q['id']) ?></td>
               <td class="eq-col-group"><?= h((string) ($q['role_group'] ?? '-')) ?></td>
               <td class="eq-col-order"><?= h((string) $q['order']) ?></td>
@@ -198,7 +214,7 @@
             </tr>
           <?php endforeach; ?>
         <?php else: ?>
-          <tr><td colspan="7">Belum ada soal esai.</td></tr>
+          <tr><td colspan="8">Belum ada soal esai.</td></tr>
         <?php endif; ?>
       </tbody>
     </table>
@@ -236,3 +252,57 @@
     </div>
   </section>
 </main>
+<script>
+(() => {
+  const selectAllBtn = document.getElementById('essay-select-all-btn');
+  const deleteBtn = document.getElementById('essay-delete-selected-btn');
+  const idsInput = document.getElementById('essay-selected-ids');
+  const deleteForm = document.getElementById('essay-bulk-delete-form');
+  const selectCols = Array.from(document.querySelectorAll('.bulk-select-col'));
+  const rowChecks = Array.from(document.querySelectorAll('.essay-row-checkbox'));
+  if (!selectAllBtn || !deleteBtn || !idsInput || !deleteForm || rowChecks.length === 0) return;
+
+  let bulkMode = false;
+
+  const updateDeleteState = () => {
+    const selectedIds = rowChecks.filter((cb) => cb.checked).map((cb) => cb.dataset.id).filter(Boolean);
+    idsInput.value = selectedIds.join(',');
+    deleteBtn.disabled = selectedIds.length === 0;
+    if (bulkMode) {
+      const allChecked = selectedIds.length > 0 && selectedIds.length === rowChecks.length;
+      selectAllBtn.textContent = allChecked ? 'Batal Pilih Semua' : 'Pilih Semua';
+    }
+  };
+
+  selectAllBtn.addEventListener('click', () => {
+    bulkMode = true;
+    selectCols.forEach((col) => {
+      col.style.display = 'table-cell';
+    });
+    const currentlyAllChecked = rowChecks.every((cb) => cb.checked);
+    rowChecks.forEach((cb) => {
+      cb.checked = !currentlyAllChecked;
+    });
+    updateDeleteState();
+  });
+
+  rowChecks.forEach((cb) => {
+    cb.addEventListener('change', updateDeleteState);
+  });
+
+  deleteBtn.addEventListener('click', () => {
+    if (!bulkMode) {
+      return;
+    }
+    const ids = idsInput.value !== '' ? idsInput.value.split(',') : [];
+    if (ids.length === 0) {
+      alert('Pilih minimal 1 soal esai.');
+      return;
+    }
+    if (!confirm(`Hapus ${ids.length} soal esai terpilih?`)) {
+      return;
+    }
+    deleteForm.submit();
+  });
+})();
+</script>

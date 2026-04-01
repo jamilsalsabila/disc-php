@@ -714,6 +714,20 @@ function delete_question(PDO $pdo, int $id): bool
     return $stmt->rowCount() > 0;
 }
 
+function delete_questions_bulk(PDO $pdo, array $ids): int
+{
+    $ids = array_values(array_unique(array_map('intval', $ids)));
+    $ids = array_values(array_filter($ids, static fn ($id) => $id > 0));
+    if (empty($ids)) {
+        return 0;
+    }
+
+    $placeholders = implode(',', array_fill(0, count($ids), '?'));
+    $stmt = $pdo->prepare("DELETE FROM questions_bank WHERE id IN ({$placeholders})");
+    $stmt->execute($ids);
+    return (int) $stmt->rowCount();
+}
+
 function build_essay_questions_filter_sql(bool $includeInactive = true, ?string $roleGroup = null): array
 {
     $conditions = [];
@@ -879,6 +893,20 @@ function delete_essay_question(PDO $pdo, int $id): bool
     $stmt = $pdo->prepare('DELETE FROM essay_questions WHERE id = ?');
     $stmt->execute([$id]);
     return $stmt->rowCount() > 0;
+}
+
+function delete_essay_questions_bulk(PDO $pdo, array $ids): int
+{
+    $ids = array_values(array_unique(array_map('intval', $ids)));
+    $ids = array_values(array_filter($ids, static fn ($id) => $id > 0));
+    if (empty($ids)) {
+        return 0;
+    }
+
+    $placeholders = implode(',', array_fill(0, count($ids), '?'));
+    $stmt = $pdo->prepare("DELETE FROM essay_questions WHERE id IN ({$placeholders})");
+    $stmt->execute($ids);
+    return (int) $stmt->rowCount();
 }
 
 function get_essay_question_group_order_keys(PDO $pdo): array

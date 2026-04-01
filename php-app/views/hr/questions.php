@@ -112,10 +112,19 @@
 
   <section class="table-card">
     <p class="subtitle u-mb-12">Semua soal pada bank ini berlaku untuk semua posisi (Role: All).</p>
+    <div class="hr-actions u-mb-10">
+      <button type="button" id="disc-select-all-btn" class="btn-secondary">Pilih Semua</button>
+      <form id="disc-bulk-delete-form" method="post" action="<?= h(route_path('/hr/questions/bulk-delete')) ?>" class="inline-form">
+        <input type="hidden" name="_csrf" value="<?= h($csrf_token) ?>">
+        <input type="hidden" name="ids_csv" id="disc-selected-ids" value="">
+        <button type="button" id="disc-delete-selected-btn" class="btn-danger-outline" disabled>Delete</button>
+      </form>
+    </div>
 
     <table class="admin-table disc-question-table">
       <thead>
         <tr>
+          <th class="bulk-select-col">Pilih</th>
           <th class="dq-col-id">ID</th>
           <th class="dq-col-role">Role</th>
           <th class="dq-col-order">Urutan</th>
@@ -128,6 +137,13 @@
         <?php if (!empty($question_bank)): ?>
           <?php foreach ($question_bank as $q): ?>
             <tr>
+              <td class="bulk-select-col">
+                <input
+                  type="checkbox"
+                  class="disc-row-checkbox"
+                  data-id="<?= h((string) $q['id']) ?>"
+                >
+              </td>
               <td class="dq-col-id">#<?= h((string) $q['id']) ?></td>
               <td class="dq-col-role">All</td>
               <td class="dq-col-order"><?= h((string) $q['order']) ?></td>
@@ -159,9 +175,63 @@
             </tr>
           <?php endforeach; ?>
         <?php else: ?>
-          <tr><td colspan="6">Belum ada soal.</td></tr>
+          <tr><td colspan="7">Belum ada soal.</td></tr>
         <?php endif; ?>
       </tbody>
     </table>
   </section>
 </main>
+<script>
+(() => {
+  const selectAllBtn = document.getElementById('disc-select-all-btn');
+  const deleteBtn = document.getElementById('disc-delete-selected-btn');
+  const idsInput = document.getElementById('disc-selected-ids');
+  const deleteForm = document.getElementById('disc-bulk-delete-form');
+  const selectCols = Array.from(document.querySelectorAll('.bulk-select-col'));
+  const rowChecks = Array.from(document.querySelectorAll('.disc-row-checkbox'));
+  if (!selectAllBtn || !deleteBtn || !idsInput || !deleteForm || rowChecks.length === 0) return;
+
+  let bulkMode = false;
+
+  const updateDeleteState = () => {
+    const selectedIds = rowChecks.filter((cb) => cb.checked).map((cb) => cb.dataset.id).filter(Boolean);
+    idsInput.value = selectedIds.join(',');
+    deleteBtn.disabled = selectedIds.length === 0;
+    if (bulkMode) {
+      const allChecked = selectedIds.length > 0 && selectedIds.length === rowChecks.length;
+      selectAllBtn.textContent = allChecked ? 'Batal Pilih Semua' : 'Pilih Semua';
+    }
+  };
+
+  selectAllBtn.addEventListener('click', () => {
+    bulkMode = true;
+    selectCols.forEach((col) => {
+      col.style.display = 'table-cell';
+    });
+    const currentlyAllChecked = rowChecks.every((cb) => cb.checked);
+    rowChecks.forEach((cb) => {
+      cb.checked = !currentlyAllChecked;
+    });
+    updateDeleteState();
+  });
+
+  rowChecks.forEach((cb) => {
+    cb.addEventListener('change', updateDeleteState);
+  });
+
+  deleteBtn.addEventListener('click', () => {
+    if (!bulkMode) {
+      return;
+    }
+    const ids = idsInput.value !== '' ? idsInput.value.split(',') : [];
+    if (ids.length === 0) {
+      alert('Pilih minimal 1 soal DISC.');
+      return;
+    }
+    if (!confirm(`Hapus ${ids.length} soal DISC terpilih?`)) {
+      return;
+    }
+    deleteForm.submit();
+  });
+})();
+</script>
