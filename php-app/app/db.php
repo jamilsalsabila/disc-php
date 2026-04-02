@@ -77,6 +77,9 @@ function migrate(PDO $pdo, array $config): void
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             candidate_id INTEGER NOT NULL,
             essay_question_id INTEGER NOT NULL,
+            role_group_snapshot TEXT,
+            question_order_snapshot INTEGER,
+            question_text_snapshot TEXT,
             answer_text TEXT,
             created_at TEXT NOT NULL,
             FOREIGN KEY(candidate_id) REFERENCES candidates(id),
@@ -221,6 +224,8 @@ function migrate(PDO $pdo, array $config): void
     ensure_candidate_phase_columns($pdo);
     ensure_candidate_draft_essay_answers_column($pdo);
     ensure_essay_questions_role_group_column($pdo);
+    ensure_essay_answers_snapshot_columns($pdo);
+    repair_legacy_essay_answer_snapshots($pdo);
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_questions_role_order ON questions_bank(role_key, question_order);');
 
     if (!empty($config['auto_seed_questions'])) {
@@ -466,6 +471,200 @@ function ensure_essay_questions_role_group_column(PDO $pdo): void
     }
 
     $pdo->exec("UPDATE essay_questions SET role_group = 'Manager' WHERE role_group IS NULL OR role_group = ''");
+}
+
+function ensure_essay_answers_snapshot_columns(PDO $pdo): void
+{
+    $columns = $pdo->query('PRAGMA table_info(essay_answers)')->fetchAll();
+    $names = array_map(static function ($col) {
+        return (string) ($col['name'] ?? '');
+    }, $columns);
+
+    if (!in_array('role_group_snapshot', $names, true)) {
+        $pdo->exec('ALTER TABLE essay_answers ADD COLUMN role_group_snapshot TEXT');
+    }
+    if (!in_array('question_order_snapshot', $names, true)) {
+        $pdo->exec('ALTER TABLE essay_answers ADD COLUMN question_order_snapshot INTEGER');
+    }
+    if (!in_array('question_text_snapshot', $names, true)) {
+        $pdo->exec('ALTER TABLE essay_answers ADD COLUMN question_text_snapshot TEXT');
+    }
+
+    $pdo->exec(
+        "UPDATE essay_answers
+         SET role_group_snapshot = (
+               SELECT q.role_group FROM essay_questions q WHERE q.id = essay_answers.essay_question_id
+             ),
+             question_order_snapshot = (
+               SELECT q.question_order FROM essay_questions q WHERE q.id = essay_answers.essay_question_id
+             ),
+             question_text_snapshot = (
+               SELECT q.question_text FROM essay_questions q WHERE q.id = essay_answers.essay_question_id
+             )
+         WHERE role_group_snapshot IS NULL
+            OR question_order_snapshot IS NULL
+            OR question_text_snapshot IS NULL"
+    );
+}
+
+function essay_group_from_selected_role_for_db(string $selectedRole): string
+{
+    $map = [
+        'Manager' => 'Manager',
+        'Back Office' => 'Back office',
+        'Head Kitchen' => 'Head Kitchen',
+        'Cook' => 'Kitchen',
+        'Cook Helper' => 'Kitchen',
+        'Steward' => 'Kitchen',
+        'Head Bar' => 'Bar',
+        'Mixologist' => 'Bar',
+        'Floor Captain' => 'Floor',
+        'Server' => 'Floor',
+        'Housekeeping' => 'Floor',
+    ];
+
+    return $map[$selectedRole] ?? 'Floor';
+}
+
+function repair_legacy_essay_answer_snapshots(PDO $pdo): void
+{
+    $rows = $pdo->query(
+        "SELECT
+            ea.id,
+            ea.candidate_id,
+            ea.essay_question_id,
+            ea.answer_text,
+            c.selected_role
+         FROM essay_answers ea
+         INNER JOIN candidates c ON c.id = ea.candidate_id
+         WHERE TRIM(COALESCE(ea.answer_text, '')) <> ''
+           AND (
+               ea.role_group_snapshot IS NULL OR TRIM(ea.role_group_snapshot) = ''
+               OR ea.question_order_snapshot IS NULL OR ea.question_order_snapshot <= 0
+               OR ea.question_text_snapshot IS NULL OR TRIM(ea.question_text_snapshot) = ''
+           )
+         ORDER BY ea.candidate_id ASC, ea.id ASC"
+    )->fetchAll();
+
+    if (empty($rows)) {
+        return;
+    }
+
+    $byCandidate = [];
+    foreach ($rows as $row) {
+        $cid = (int) ($row['candidate_id'] ?? 0);
+        if ($cid <= 0) {
+            continue;
+        }
+        if (!isset($byCandidate[$cid])) {
+            $byCandidate[$cid] = [];
+        }
+        $byCandidate[$cid][] = $row;
+    }
+
+    $selectQuestionById = $pdo->prepare('SELECT id, role_group, question_order, question_text FROM essay_questions WHERE id = ?');
+    $selectGroupQuestions = $pdo->prepare('SELECT id, role_group, question_order, question_text FROM essay_questions WHERE role_group = ? ORDER BY question_order ASC, id ASC');
+    $selectUsedOrders = $pdo->prepare(
+        "SELECT DISTINCT question_order_snapshot
+         FROM essay_answers
+         WHERE candidate_id = ?
+           AND question_order_snapshot IS NOT NULL
+           AND question_order_snapshot > 0"
+    );
+    $updateSnapshot = $pdo->prepare(
+        'UPDATE essay_answers
+         SET role_group_snapshot = ?, question_order_snapshot = ?, question_text_snapshot = ?
+         WHERE id = ?'
+    );
+
+    $pdo->beginTransaction();
+    try {
+        foreach ($byCandidate as $candidateId => $candidateRows) {
+            $selectedRole = (string) ($candidateRows[0]['selected_role'] ?? '');
+            $group = essay_group_from_selected_role_for_db($selectedRole);
+
+            $selectGroupQuestions->execute([$group]);
+            $groupQuestions = $selectGroupQuestions->fetchAll();
+            if (empty($groupQuestions)) {
+                continue;
+            }
+
+            $questionById = [];
+            $availableByOrder = [];
+            foreach ($groupQuestions as $q) {
+                $qid = (int) ($q['id'] ?? 0);
+                $order = (int) ($q['question_order'] ?? 0);
+                if ($qid > 0) {
+                    $questionById[$qid] = $q;
+                }
+                if ($order > 0 && !isset($availableByOrder[$order])) {
+                    $availableByOrder[$order] = $q;
+                }
+            }
+
+            $selectUsedOrders->execute([$candidateId]);
+            $usedOrders = [];
+            foreach ($selectUsedOrders->fetchAll() as $u) {
+                $o = (int) ($u['question_order_snapshot'] ?? 0);
+                if ($o > 0) {
+                    $usedOrders[$o] = true;
+                }
+            }
+
+            $missingOrders = [];
+            foreach ($availableByOrder as $order => $q) {
+                if (!isset($usedOrders[(int) $order])) {
+                    $missingOrders[] = (int) $order;
+                }
+            }
+            sort($missingOrders);
+
+            foreach ($candidateRows as $row) {
+                $essayAnswerId = (int) ($row['id'] ?? 0);
+                if ($essayAnswerId <= 0) {
+                    continue;
+                }
+
+                $question = null;
+                $essayQuestionId = (int) ($row['essay_question_id'] ?? 0);
+                if ($essayQuestionId > 0 && isset($questionById[$essayQuestionId])) {
+                    $question = $questionById[$essayQuestionId];
+                } elseif ($essayQuestionId > 0) {
+                    $selectQuestionById->execute([$essayQuestionId]);
+                    $q = $selectQuestionById->fetch();
+                    if (is_array($q) && trim((string) ($q['question_text'] ?? '')) !== '') {
+                        $question = $q;
+                    }
+                }
+
+                if ($question === null && !empty($missingOrders)) {
+                    $nextOrder = array_shift($missingOrders);
+                    $question = $availableByOrder[$nextOrder] ?? null;
+                }
+
+                if (!is_array($question)) {
+                    continue;
+                }
+
+                $questionOrder = (int) ($question['question_order'] ?? 0);
+                if ($questionOrder > 0) {
+                    $usedOrders[$questionOrder] = true;
+                }
+
+                $updateSnapshot->execute([
+                    (string) ($question['role_group'] ?? $group),
+                    $questionOrder > 0 ? $questionOrder : null,
+                    (string) ($question['question_text'] ?? ''),
+                    $essayAnswerId,
+                ]);
+            }
+        }
+
+        $pdo->commit();
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        throw $e;
+    }
 }
 
 function seed_questions_by_role_if_missing(PDO $pdo, array $config): void
@@ -1099,14 +1298,15 @@ function get_essay_answer_details_for_candidate(PDO $pdo, int $candidateId): arr
     $stmt = $pdo->prepare(
         "SELECT
             ea.essay_question_id,
-            ea.answer_text,
-            q.role_group,
-            q.question_order,
-            q.question_text
+            MAX(ea.answer_text) AS answer_text,
+            COALESCE(MAX(ea.role_group_snapshot), MAX(q.role_group)) AS role_group,
+            COALESCE(MAX(ea.question_order_snapshot), MAX(q.question_order)) AS question_order,
+            COALESCE(MAX(ea.question_text_snapshot), MAX(q.question_text)) AS question_text
          FROM essay_answers ea
          LEFT JOIN essay_questions q ON q.id = ea.essay_question_id
          WHERE ea.candidate_id = ?
-         ORDER BY q.question_order ASC, ea.essay_question_id ASC"
+         GROUP BY ea.essay_question_id
+         ORDER BY COALESCE(MAX(ea.question_order_snapshot), MAX(q.question_order), 999999) ASC, ea.essay_question_id ASC"
     );
     $stmt->execute([$candidateId]);
     return $stmt->fetchAll();
@@ -1118,10 +1318,38 @@ function save_essay_answers(PDO $pdo, int $candidateId, array $answersByQuestion
     $del = $pdo->prepare('DELETE FROM essay_answers WHERE candidate_id = ?');
     $del->execute([$candidateId]);
 
-    $ins = $pdo->prepare('INSERT INTO essay_answers (candidate_id, essay_question_id, answer_text, created_at) VALUES (?, ?, ?, ?)');
+    $questionMeta = [];
+    $questionIds = array_values(array_filter(array_map('intval', array_keys($answersByQuestionId)), static fn ($id) => $id > 0));
+    if (!empty($questionIds)) {
+        $placeholders = implode(',', array_fill(0, count($questionIds), '?'));
+        $stmtMeta = $pdo->prepare("SELECT id, role_group, question_order, question_text FROM essay_questions WHERE id IN ({$placeholders})");
+        $stmtMeta->execute($questionIds);
+        foreach ($stmtMeta->fetchAll() as $row) {
+            $qid = (int) ($row['id'] ?? 0);
+            if ($qid > 0) {
+                $questionMeta[$qid] = [
+                    'role_group' => (string) ($row['role_group'] ?? ''),
+                    'question_order' => (int) ($row['question_order'] ?? 0),
+                    'question_text' => (string) ($row['question_text'] ?? ''),
+                ];
+            }
+        }
+    }
+
+    $ins = $pdo->prepare('INSERT INTO essay_answers (candidate_id, essay_question_id, role_group_snapshot, question_order_snapshot, question_text_snapshot, answer_text, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)');
     $now = now_iso();
     foreach ($answersByQuestionId as $questionId => $text) {
-        $ins->execute([$candidateId, (int) $questionId, trim((string) $text), $now]);
+        $qid = (int) $questionId;
+        $meta = $questionMeta[$qid] ?? ['role_group' => null, 'question_order' => null, 'question_text' => null];
+        $ins->execute([
+            $candidateId,
+            $qid,
+            $meta['role_group'],
+            $meta['question_order'],
+            $meta['question_text'],
+            trim((string) $text),
+            $now,
+        ]);
     }
 
     $pdo->commit();
@@ -1213,6 +1441,7 @@ function get_essay_typing_metrics_for_candidate(PDO $pdo, int $candidateId): arr
             m.active_ms,
             m.total_chars,
             m.last_input_at,
+            q.role_group,
             q.question_order,
             q.question_text
          FROM essay_typing_metrics m
@@ -1381,7 +1610,18 @@ function list_candidates_paginated(PDO $pdo, array $filters = [], int $page = 1,
 
 function get_answers_for_candidate(PDO $pdo, int $candidateId): array
 {
-    $stmt = $pdo->prepare('SELECT * FROM answers WHERE candidate_id = ? ORDER BY question_id ASC, answer_type DESC');
+    $stmt = $pdo->prepare(
+        "SELECT
+            a.question_id,
+            q.question_order,
+            MAX(CASE WHEN a.answer_type = 'most' THEN a.option_code END) AS most_code,
+            MAX(CASE WHEN a.answer_type = 'least' THEN a.option_code END) AS least_code
+         FROM answers a
+         LEFT JOIN questions_bank q ON q.id = a.question_id
+         WHERE a.candidate_id = ?
+         GROUP BY a.question_id, q.question_order
+         ORDER BY COALESCE(q.question_order, 999999) ASC, a.question_id ASC"
+    );
     $stmt->execute([$candidateId]);
     return $stmt->fetchAll();
 }

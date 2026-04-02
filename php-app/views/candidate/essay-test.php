@@ -24,9 +24,6 @@
         <?php $qid = (int) ($q['id'] ?? 0); ?>
         <article class="question-card">
           <h3><?= h((string) ($q['order'] ?? 0)) ?>. <?= h((string) ($q['question_text'] ?? '')) ?></h3>
-          <?php if (!empty($q['guidance_text'])): ?>
-            <p class="subtitle" style="margin-top:6px;"><?= h((string) $q['guidance_text']) ?></p>
-          <?php endif; ?>
           <label style="margin-top:10px;">
             Jawaban Anda
             <textarea name="essay_<?= h((string) $qid) ?>" rows="5" required><?= h((string) ($draft_essay_answers[$qid] ?? '')) ?></textarea>

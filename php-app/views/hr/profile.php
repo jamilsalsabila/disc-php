@@ -127,8 +127,10 @@
           <?php foreach ($essay_rows as $row): ?>
             <tr>
               <td class="pa-col-no"><?= h((string) ((int) ($row['question_order'] ?? 0))) ?></td>
-              <?php $essayQuestion = (string) ($row['question_text'] ?? '-'); ?>
-              <?php $essayAnswer = (string) ($row['answer_text'] ?? ''); ?>
+              <?php $essayQuestionRaw = trim((string) ($row['question_text'] ?? '')); ?>
+              <?php $essayQuestion = $essayQuestionRaw !== '' ? $essayQuestionRaw : '(Soal sudah tidak tersedia di bank soal)'; ?>
+              <?php $essayAnswerRaw = trim((string) ($row['answer_text'] ?? '')); ?>
+              <?php $essayAnswer = $essayAnswerRaw !== '' ? $essayAnswerRaw : 'Kosong (tidak dijawab)'; ?>
               <td class="pa-col-question"><span class="cell-clamp" title="<?= h($essayQuestion) ?>"><?= h($essayQuestion) ?></span></td>
               <td class="pa-col-answer"><span class="cell-wrap" title="<?= h($essayAnswer) ?>"><?= h($essayAnswer) ?></span></td>
             </tr>

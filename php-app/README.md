@@ -18,7 +18,7 @@ Versi produksi aplikasi asesmen DISC berbasis PHP + SQLite.
   - menyimpan skor AI, konklusi, saran posisi, strengths/risks/follow-up.
 - CRUD soal manual.
 - CRUD bank soal esai (manual) untuk persiapan asesmen tulisan.
-  - Kelompok soal esai: `Manager`, `Back office`, `Kitchen`, `Bar`, `Floor`.
+  - Kelompok soal esai: `Manager`, `Back office`, `Head Kitchen`, `Kitchen`, `Bar`, `Floor`.
   - Pada form tambah soal esai, `Urutan Soal` otomatis menyesuaikan urutan berikutnya berdasarkan kelompok role yang dipilih.
   - Halaman `Kelola Soal Esai` mendukung pagination (`10/20/50/100`) dan sort (default, urutan, kelompok, status, update, id).
 - Bulk upload soal via CSV:
@@ -48,6 +48,10 @@ Versi produksi aplikasi asesmen DISC berbasis PHP + SQLite.
 
 - Bank soal aktif saat ini berjalan dengan scope `Role: All` (one-for-all).
 - Mapping DISC disimpan per soal (`disc_a`, `disc_b`, `disc_c`, `disc_d`) dan dipakai langsung saat scoring.
+- Mapping role ke kelompok esai:
+  - `Head Kitchen` -> `Head Kitchen` (khusus),
+  - `Cook`, `Cook Helper`, `Steward` -> `Kitchen`,
+  - role lain mengikuti kelompok masing-masing (`Manager`, `Back office`, `Bar`, `Floor`).
 
 ## Aturan scoring ringkas
 

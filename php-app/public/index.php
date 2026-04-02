@@ -73,7 +73,7 @@ function question_role_options(): array
 
 function essay_group_options(): array
 {
-    return ['Manager', 'Back office', 'Kitchen', 'Bar', 'Floor'];
+    return ['Manager', 'Back office', 'Head Kitchen', 'Kitchen', 'Bar', 'Floor'];
 }
 
 function essay_group_by_selected_role(string $selectedRole): string
@@ -81,7 +81,7 @@ function essay_group_by_selected_role(string $selectedRole): string
     $map = [
         'Manager' => 'Manager',
         'Back Office' => 'Back office',
-        'Head Kitchen' => 'Kitchen',
+        'Head Kitchen' => 'Head Kitchen',
         'Cook' => 'Kitchen',
         'Cook Helper' => 'Kitchen',
         'Steward' => 'Kitchen',
@@ -395,6 +395,17 @@ function build_essay_answers_from_payload(array $payload, array $essayQuestions)
     return $answers;
 }
 
+function count_filled_essay_answers(array $answers): int
+{
+    $count = 0;
+    foreach ($answers as $text) {
+        if (trim((string) $text) !== '') {
+            $count++;
+        }
+    }
+    return $count;
+}
+
 function merge_answers_with_fallback(array $primary, array $fallback): array
 {
     $merged = $fallback;
@@ -452,18 +463,175 @@ function register_login_failure(PDO $pdo, array $config, string $ip): void
 
 function parse_candidate_profile_answers(array $answers): array
 {
-    $map = [];
+    $rows = [];
+    $fallbackNo = 1;
     foreach ($answers as $answer) {
-        $qid = (int) $answer['question_id'];
-        if (!isset($map[$qid])) {
-            $map[$qid] = ['id' => $qid, 'most' => '-', 'least' => '-'];
+        $order = (int) ($answer['question_order'] ?? 0);
+        $rows[] = [
+            'id' => $order > 0 ? $order : $fallbackNo,
+            'most' => (string) (($answer['most_code'] ?? '') !== '' ? $answer['most_code'] : '-'),
+            'least' => (string) (($answer['least_code'] ?? '') !== '' ? $answer['least_code'] : '-'),
+        ];
+        $fallbackNo++;
+    }
+
+    return $rows;
+}
+
+function normalize_essay_profile_rows(array $rows, ?string $expectedGroup = null, array $expectedQuestions = [], bool $includeUnanswered = false): array
+{
+    $map = [];
+    $idx = 0;
+    $unresolved = [];
+    foreach ($rows as $row) {
+        $qid = (int) ($row['essay_question_id'] ?? 0);
+        $group = trim((string) ($row['role_group'] ?? ''));
+        $question = trim((string) ($row['question_text'] ?? ''));
+        $answer = trim((string) ($row['answer_text'] ?? ''));
+
+        if ($expectedGroup !== null && $expectedGroup !== '' && $group !== '' && strcasecmp($group, $expectedGroup) !== 0) {
+            continue;
+        }
+        if ($answer === '') {
+            continue;
         }
 
-        if ($answer['answer_type'] === 'most') {
-            $map[$qid]['most'] = $answer['option_code'] ?: '-';
+        $order = (int) ($row['question_order'] ?? 0);
+        if ($order <= 0 || $question === '' || $group === '') {
+            $unresolved[] = $row;
+            continue;
         }
-        if ($answer['answer_type'] === 'least') {
-            $map[$qid]['least'] = $answer['option_code'] ?: '-';
+
+        $key = $qid > 0 ? 'q' . $qid : 'r' . $idx;
+        $idx++;
+        if (!isset($map[$key])) {
+            $map[$key] = $row;
+            continue;
+        }
+
+        $existingQuestion = trim((string) ($map[$key]['question_text'] ?? ''));
+        $incomingQuestion = $question;
+        if (mb_strlen($incomingQuestion) > mb_strlen($existingQuestion)) {
+            $map[$key] = $row;
+        }
+    }
+
+    $expectedByOrder = [];
+    foreach ($expectedQuestions as $q) {
+        $order = (int) ($q['order'] ?? 0);
+        if ($order <= 0) {
+            continue;
+        }
+        $expectedByOrder[$order] = [
+            'role_group' => (string) ($q['role_group'] ?? $expectedGroup ?? ''),
+            'question_order' => $order,
+            'question_text' => (string) ($q['question_text'] ?? ''),
+        ];
+    }
+
+    if (!empty($unresolved) && !empty($expectedByOrder)) {
+        $usedOrders = [];
+        foreach ($map as $row) {
+            $o = (int) ($row['question_order'] ?? 0);
+            if ($o > 0) {
+                $usedOrders[$o] = true;
+            }
+        }
+
+        $missingOrders = [];
+        foreach (array_keys($expectedByOrder) as $o) {
+            if (!isset($usedOrders[$o])) {
+                $missingOrders[] = (int) $o;
+            }
+        }
+        sort($missingOrders);
+
+        foreach ($unresolved as $row) {
+            if (empty($missingOrders)) {
+                break;
+            }
+            $order = array_shift($missingOrders);
+            $qid = (int) ($row['essay_question_id'] ?? 0);
+            $row['role_group'] = $expectedByOrder[$order]['role_group'] ?? ($expectedGroup ?? '');
+            $row['question_order'] = $order;
+            $row['question_text'] = $expectedByOrder[$order]['question_text'] ?? '';
+
+            $key = $qid > 0 ? 'q' . $qid : 'fallback_' . $order;
+            if (!isset($map[$key])) {
+                $map[$key] = $row;
+            }
+        }
+    }
+
+    if ($includeUnanswered && !empty($expectedByOrder)) {
+        $usedOrders = [];
+        foreach ($map as $row) {
+            $o = (int) ($row['question_order'] ?? 0);
+            if ($o > 0) {
+                $usedOrders[$o] = true;
+            }
+        }
+
+        foreach ($expectedByOrder as $order => $q) {
+            $order = (int) $order;
+            if ($order <= 0 || isset($usedOrders[$order])) {
+                continue;
+            }
+            $map['missing_' . $order] = [
+                'essay_question_id' => (int) ($q['id'] ?? 0),
+                'role_group' => (string) ($q['role_group'] ?? $expectedGroup ?? ''),
+                'question_order' => $order,
+                'question_text' => (string) ($q['question_text'] ?? ''),
+                'answer_text' => '',
+            ];
+        }
+    }
+
+    $values = array_values($map);
+    usort($values, static function (array $a, array $b): int {
+        $oa = (int) ($a['question_order'] ?? 0);
+        $ob = (int) ($b['question_order'] ?? 0);
+        if ($oa !== $ob) {
+            if ($oa <= 0) {
+                return 1;
+            }
+            if ($ob <= 0) {
+                return -1;
+            }
+            return $oa <=> $ob;
+        }
+        $qa = (int) ($a['essay_question_id'] ?? 0);
+        $qb = (int) ($b['essay_question_id'] ?? 0);
+        return $qa <=> $qb;
+    });
+
+    return $values;
+}
+
+function normalize_typing_rows(array $rows, ?string $expectedGroup = null): array
+{
+    $map = [];
+    foreach ($rows as $row) {
+        $order = (int) ($row['question_order'] ?? 0);
+        $group = trim((string) ($row['role_group'] ?? ''));
+
+        if ($expectedGroup !== null && $expectedGroup !== '' && $group !== '' && strcasecmp($group, $expectedGroup) !== 0) {
+            continue;
+        }
+        if ($order <= 0) {
+            continue;
+        }
+
+        $key = $order;
+        if (!isset($map[$key])) {
+            $map[$key] = $row;
+            continue;
+        }
+
+        $existingActive = (int) ($map[$key]['active_ms'] ?? 0);
+        $incomingActive = (int) ($row['active_ms'] ?? 0);
+        if ($incomingActive > $existingActive) {
+            $map[$key] = $row;
         }
     }
 
@@ -1116,12 +1284,13 @@ if ($method === 'POST' && ($path === '/essay-submit' || $path === '/submit')) {
     $essayQuestions = list_essay_questions($pdo, false, $group);
     $postedEssay = build_essay_answers_from_payload($_POST, $essayQuestions);
     $draftEssay = parse_draft_essay_answers_from_candidate($candidate);
-    $essayAnswers = array_merge($draftEssay, $postedEssay);
+    $essayAnswers = $postedEssay;
 
     $deadlineAt = (string) ($candidate['essay_deadline_at'] ?? '');
     $expired = $deadlineAt !== '' && strtotime($deadlineAt) <= time();
-    if (!$expired && count($essayAnswers) < count($essayQuestions)) {
-        update_candidate_draft_essay_answers($pdo, (int) $candidate['id'], $essayAnswers);
+    if (!$expired && count_filled_essay_answers($essayAnswers) < count($essayQuestions)) {
+        // Keep latest posted draft for recovery, but manual submit must be complete from current form.
+        update_candidate_draft_essay_answers($pdo, (int) $candidate['id'], array_merge($draftEssay, $postedEssay));
         render('candidate/essay-test', [
             'page_title' => 'Tes Esai',
             'candidate' => $candidate,
@@ -1134,7 +1303,12 @@ if ($method === 'POST' && ($path === '/essay-submit' || $path === '/submit')) {
         exit;
     }
 
-    if (!empty($essayAnswers)) {
+    if ($expired) {
+        // Timeout fallback can still use latest autosave + posted payload.
+        $essayAnswers = array_merge($draftEssay, $postedEssay);
+    }
+
+    if (count_filled_essay_answers($essayAnswers) > 0) {
         save_essay_answers($pdo, (int) $candidate['id'], $essayAnswers);
     }
 
@@ -1459,7 +1633,15 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)$#', $path, $m)) {
 
     $answers = get_answers_for_candidate($pdo, (int) $candidate['id']);
     $questionRows = parse_candidate_profile_answers($answers);
-    $essayRows = get_essay_answer_details_for_candidate($pdo, (int) $candidate['id']);
+    $expectedEssayGroup = essay_group_by_selected_role((string) ($candidate['selected_role'] ?? ''));
+    $includeUnansweredEssay = (string) ($candidate['status'] ?? '') === 'timeout_submitted';
+    $expectedEssayQuestions = list_essay_questions($pdo, true, $expectedEssayGroup, 'order', 'asc');
+    $essayRows = normalize_essay_profile_rows(
+        get_essay_answer_details_for_candidate($pdo, (int) $candidate['id']),
+        $expectedEssayGroup,
+        $expectedEssayQuestions,
+        $includeUnansweredEssay
+    );
     $integrityEvents = list_integrity_events($pdo, (int) $candidate['id'], 250);
     $integrityEventsDisplay = array_map(static function (array $ev): array {
         $phase = (string) ($ev['phase'] ?? '');
@@ -1470,7 +1652,10 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)$#', $path, $m)) {
         $ev['event_value_label'] = integrity_event_value_label($value);
         return $ev;
     }, $integrityEvents);
-    $typingMetricsRows = get_essay_typing_metrics_for_candidate($pdo, (int) $candidate['id']);
+    $typingMetricsRows = normalize_typing_rows(
+        get_essay_typing_metrics_for_candidate($pdo, (int) $candidate['id']),
+        $expectedEssayGroup
+    );
     $aiEvaluation = get_ai_evaluation_by_candidate($pdo, (int) $candidate['id']);
 
     $roleScoreData = [];
@@ -1550,8 +1735,16 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)/export/answers\.csv$
     }
 
     $rows = get_answer_details_for_candidate_export($pdo, $candidateId);
-    $essayRows = get_essay_answer_details_for_candidate($pdo, $candidateId);
-    $typingRows = get_essay_typing_metrics_for_candidate($pdo, $candidateId);
+    $expectedEssayGroup = essay_group_by_selected_role((string) ($candidate['selected_role'] ?? ''));
+    $includeUnansweredEssay = (string) ($candidate['status'] ?? '') === 'timeout_submitted';
+    $expectedEssayQuestions = list_essay_questions($pdo, true, $expectedEssayGroup, 'order', 'asc');
+    $essayRows = normalize_essay_profile_rows(
+        get_essay_answer_details_for_candidate($pdo, $candidateId),
+        $expectedEssayGroup,
+        $expectedEssayQuestions,
+        $includeUnansweredEssay
+    );
+    $typingRows = normalize_typing_rows(get_essay_typing_metrics_for_candidate($pdo, $candidateId), $expectedEssayGroup);
     $integrityEventsRaw = list_integrity_events($pdo, $candidateId, 300);
     $integrityEvents = array_map(static function (array $ev): array {
         $phase = (string) ($ev['phase'] ?? '');
@@ -1643,11 +1836,13 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)/export/answers\.csv$
     fputcsv($out, ['JAWABAN ESAI']);
     fputcsv($out, ['No', 'Kelompok', 'Pertanyaan', 'Jawaban']);
     foreach ($essayRows as $row) {
+        $questionText = trim((string) ($row['question_text'] ?? ''));
+        $answerText = trim((string) ($row['answer_text'] ?? ''));
         fputcsv($out, [
             (int) ($row['question_order'] ?? 0),
             (string) ($row['role_group'] ?? '-'),
-            (string) ($row['question_text'] ?? ''),
-            (string) ($row['answer_text'] ?? ''),
+            $questionText !== '' ? $questionText : '(Soal sudah tidak tersedia di bank soal)',
+            $answerText !== '' ? $answerText : ($includeUnansweredEssay ? 'Kosong (tidak dijawab)' : ''),
         ]);
     }
 
@@ -1701,8 +1896,16 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)/export/answers\.pdf$
     }
 
     $rows = get_answer_details_for_candidate_export($pdo, $candidateId);
-    $essayRows = get_essay_answer_details_for_candidate($pdo, $candidateId);
-    $typingRows = get_essay_typing_metrics_for_candidate($pdo, $candidateId);
+    $expectedEssayGroup = essay_group_by_selected_role((string) ($candidate['selected_role'] ?? ''));
+    $includeUnansweredEssay = (string) ($candidate['status'] ?? '') === 'timeout_submitted';
+    $expectedEssayQuestions = list_essay_questions($pdo, true, $expectedEssayGroup, 'order', 'asc');
+    $essayRows = normalize_essay_profile_rows(
+        get_essay_answer_details_for_candidate($pdo, $candidateId),
+        $expectedEssayGroup,
+        $expectedEssayQuestions,
+        $includeUnansweredEssay
+    );
+    $typingRows = normalize_typing_rows(get_essay_typing_metrics_for_candidate($pdo, $candidateId), $expectedEssayGroup);
     $integrityEventsRaw = list_integrity_events($pdo, $candidateId, 300);
     $integrityEvents = array_map(static function (array $ev): array {
         $phase = (string) ($ev['phase'] ?? '');
@@ -1762,11 +1965,13 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)/export/answers\.pdf$
     echo '<h3>Jawaban Esai</h3>';
     echo '<table><thead><tr><th>No</th><th>Kelompok</th><th>Pertanyaan</th><th>Jawaban</th></tr></thead><tbody>';
     foreach ($essayRows as $row) {
+        $questionText = trim((string) ($row['question_text'] ?? ''));
+        $answerText = trim((string) ($row['answer_text'] ?? ''));
         echo '<tr>'
             . '<td>' . h((string) ((int) ($row['question_order'] ?? 0))) . '</td>'
             . '<td>' . h((string) ($row['role_group'] ?? '-')) . '</td>'
-            . '<td>' . h((string) ($row['question_text'] ?? '')) . '</td>'
-            . '<td>' . nl2br(h((string) ($row['answer_text'] ?? ''))) . '</td>'
+            . '<td>' . h($questionText !== '' ? $questionText : '(Soal sudah tidak tersedia di bank soal)') . '</td>'
+            . '<td>' . nl2br(h($answerText !== '' ? $answerText : ($includeUnansweredEssay ? 'Kosong (tidak dijawab)' : ''))) . '</td>'
             . '</tr>';
     }
     echo '</tbody></table>';
@@ -1871,14 +2076,20 @@ if ($method === 'GET' && $path === '/hr/essay-questions/new') {
     if (!in_array($group, $essayGroupOptions, true)) {
         $group = 'Manager';
     }
+    $flashMessage = $_SESSION['essay_question_form_flash_message'] ?? null;
+    $flashType = $_SESSION['essay_question_form_flash_type'] ?? 'success';
+    unset($_SESSION['essay_question_form_flash_message'], $_SESSION['essay_question_form_flash_type']);
 
     render('hr/essay-question-form', [
         'page_title' => 'Tambah Soal Esai',
         'form_title' => 'Tambah Soal Esai',
         'action_url' => route_path('/hr/essay-questions/new'),
+        'is_create' => true,
         'essay_group_options' => $essayGroupOptions,
         'auto_order_enabled' => true,
         'next_order_map' => build_essay_next_order_map($pdo, $essayGroupOptions),
+        'flash_message' => is_string($flashMessage) ? $flashMessage : null,
+        'flash_type' => is_string($flashType) ? $flashType : 'success',
         'values' => [
             'role_group' => $group,
             'order' => get_next_essay_question_order($pdo, $group),
@@ -1921,6 +2132,12 @@ if ($method === 'POST' && $path === '/hr/essay-questions/new') {
     }
 
     create_essay_question($pdo, $payload);
+    if (!empty($_POST['save_and_add'])) {
+        $_SESSION['essay_question_form_flash_message'] = 'Soal esai berhasil ditambahkan. Silakan tambah soal berikutnya.';
+        $_SESSION['essay_question_form_flash_type'] = 'success';
+        redirect(route_path('/hr/essay-questions/new?group=' . urlencode((string) $payload['role_group'])));
+    }
+
     $_SESSION['essay_questions_flash_message'] = 'Soal esai berhasil ditambahkan.';
     $_SESSION['essay_questions_flash_type'] = 'success';
     redirect(route_path('/hr/essay-questions'));
@@ -1941,6 +2158,7 @@ if ($method === 'GET' && preg_match('#^/hr/essay-questions/(\d+)/edit$#', $path,
         'page_title' => 'Edit Soal Esai #' . $row['id'],
         'form_title' => 'Edit Soal Esai #' . $row['id'],
         'action_url' => route_path('/hr/essay-questions/' . $row['id'] . '/edit'),
+        'is_create' => false,
         'essay_group_options' => $essayGroupOptions,
         'auto_order_enabled' => false,
         'next_order_map' => [],
@@ -2314,12 +2532,18 @@ if ($method === 'POST' && $path === '/hr/questions/bulk-import-confirm') {
 
 if ($method === 'GET' && $path === '/hr/questions/new') {
     require_hr_auth($config);
+    $flashMessage = $_SESSION['question_form_flash_message'] ?? null;
+    $flashType = $_SESSION['question_form_flash_type'] ?? 'success';
+    unset($_SESSION['question_form_flash_message'], $_SESSION['question_form_flash_type']);
 
     render('hr/question-form', [
         'page_title' => 'Tambah Soal DISC',
         'form_title' => 'Tambah Soal',
         'action_url' => route_path('/hr/questions/new'),
+        'is_create' => true,
         'role_options' => question_role_options(),
+        'flash_message' => is_string($flashMessage) ? $flashMessage : null,
+        'flash_type' => is_string($flashType) ? $flashType : 'success',
         'values' => [
             'role_key' => 'All',
             'order' => get_next_question_order($pdo, null),
@@ -2375,6 +2599,12 @@ if ($method === 'POST' && $path === '/hr/questions/new') {
     }
 
     create_question($pdo, $payload);
+    if (!empty($_POST['save_and_add'])) {
+        $_SESSION['question_form_flash_message'] = 'Soal DISC berhasil ditambahkan. Silakan tambah soal berikutnya.';
+        $_SESSION['question_form_flash_type'] = 'success';
+        redirect(route_path('/hr/questions/new'));
+    }
+
     redirect(route_path('/hr/questions'));
 }
 
@@ -2392,6 +2622,7 @@ if ($method === 'GET' && preg_match('#^/hr/questions/(\d+)/edit$#', $path, $m)) 
         'page_title' => 'Edit Soal #' . $row['id'],
         'form_title' => 'Edit Soal #' . $row['id'],
         'action_url' => route_path('/hr/questions/' . $row['id'] . '/edit'),
+        'is_create' => false,
         'role_options' => question_role_options(),
         'values' => [
             'role_key' => 'All',

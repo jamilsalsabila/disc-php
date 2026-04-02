@@ -7,6 +7,11 @@
     <?php if (!empty($error_message)): ?>
       <div class="alert"><?= h($error_message) ?></div>
     <?php endif; ?>
+    <?php if (!empty($flash_message)): ?>
+      <div class="alert <?= ($flash_type ?? 'success') === 'error' ? 'alert-danger' : 'alert-success' ?>">
+        <?= h((string) $flash_message) ?>
+      </div>
+    <?php endif; ?>
 
     <form method="post" action="<?= h($action_url) ?>" class="identity-form">
       <input type="hidden" name="_csrf" value="<?= h($csrf_token) ?>">
@@ -80,6 +85,9 @@
 
       <div class="hr-actions">
         <button type="submit" class="btn-primary">Simpan</button>
+        <?php if (!empty($is_create)): ?>
+          <button type="submit" name="save_and_add" value="1" class="btn-secondary">Simpan & Tambah Lagi</button>
+        <?php endif; ?>
         <a href="<?= h(route_path('/hr/questions')) ?>" class="btn-secondary">Batal</a>
       </div>
     </form>
