@@ -9,6 +9,7 @@
       <button type="button" class="btn-secondary" id="timeout-refresh-btn">Refresh Status</button>
       <a href="<?= h(route_path('/hr/questions')) ?>" class="btn-secondary">Kelola Soal DISC</a>
       <a href="<?= h(route_path('/hr/essay-questions')) ?>" class="btn-secondary">Kelola Soal Esai</a>
+      <a href="<?= h(route_path('/hr/master-data')) ?>" class="btn-secondary">Kelola Role & Kelompok</a>
       <a href="<?= h(route_path('/hr/export/excel')) ?>" class="btn-secondary">Export Excel</a>
       <a href="<?= h(route_path('/hr/export/pdf')) ?>" class="btn-secondary">Export PDF</a>
       <a href="<?= h(route_path('/hr/export/answers.csv')) ?>" class="btn-secondary">Export Jawaban (CSV)</a>

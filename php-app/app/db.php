@@ -88,6 +88,20 @@ function migrate(PDO $pdo, array $config): void
     );
 
     $pdo->exec(
+        "CREATE TABLE IF NOT EXISTS candidate_essay_questions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            candidate_id INTEGER NOT NULL,
+            source_essay_question_id INTEGER,
+            role_group TEXT NOT NULL,
+            question_order INTEGER NOT NULL,
+            question_text TEXT NOT NULL,
+            guidance_text TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(candidate_id) REFERENCES candidates(id)
+        );"
+    );
+
+    $pdo->exec(
         "CREATE TABLE IF NOT EXISTS questions_bank (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             role_key TEXT NOT NULL DEFAULT 'Manager',
@@ -140,6 +154,19 @@ function migrate(PDO $pdo, array $config): void
             event_type TEXT NOT NULL,
             event_value TEXT,
             meta_json TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(candidate_id) REFERENCES candidates(id)
+        );"
+    );
+
+    $pdo->exec(
+        "CREATE TABLE IF NOT EXISTS candidate_journey_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            candidate_id INTEGER NOT NULL,
+            phase TEXT NOT NULL,
+            event_key TEXT NOT NULL,
+            event_value TEXT,
+            payload_json TEXT,
             created_at TEXT NOT NULL,
             FOREIGN KEY(candidate_id) REFERENCES candidates(id)
         );"
@@ -200,15 +227,42 @@ function migrate(PDO $pdo, array $config): void
         );"
     );
 
+    $pdo->exec(
+        "CREATE TABLE IF NOT EXISTS role_catalog (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            role_name TEXT NOT NULL UNIQUE,
+            essay_group TEXT NOT NULL,
+            sort_order INTEGER NOT NULL DEFAULT 999,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );"
+    );
+
+    $pdo->exec(
+        "CREATE TABLE IF NOT EXISTS essay_group_catalog (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            group_name TEXT NOT NULL UNIQUE,
+            sort_order INTEGER NOT NULL DEFAULT 999,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );"
+    );
+
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_candidates_browser_token ON candidates(browser_token);');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_candidates_email_key ON candidates(email_key);');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_candidates_whatsapp_key ON candidates(whatsapp_key);');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_answers_candidate_id ON answers(candidate_id);');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_essay_answers_candidate_id ON essay_answers(candidate_id);');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_candidate_essay_questions_candidate ON candidate_essay_questions(candidate_id, question_order);');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_questions_order ON questions_bank(question_order);');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_essay_questions_order ON essay_questions(question_order);');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_role_catalog_sort ON role_catalog(sort_order, role_name);');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_essay_group_catalog_sort ON essay_group_catalog(sort_order, group_name);');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_interview_checklist_candidate ON interview_checklists(candidate_id);');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_integrity_events_candidate ON integrity_events(candidate_id, created_at);');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_candidate_journey_candidate ON candidate_journey_events(candidate_id, created_at);');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_typing_metrics_candidate ON essay_typing_metrics(candidate_id, essay_question_id);');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_ai_eval_candidate ON ai_evaluations(candidate_id);');
 
@@ -225,11 +279,119 @@ function migrate(PDO $pdo, array $config): void
     ensure_candidate_draft_essay_answers_column($pdo);
     ensure_essay_questions_role_group_column($pdo);
     ensure_essay_answers_snapshot_columns($pdo);
+    ensure_role_catalog_columns($pdo);
+    ensure_essay_group_catalog_columns($pdo);
+    seed_master_catalog_if_empty($pdo, $config);
+    migrate_candidate_role_names_with_catalog($pdo);
+    backfill_candidate_essay_question_snapshots($pdo);
     repair_legacy_essay_answer_snapshots($pdo);
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_questions_role_order ON questions_bank(role_key, question_order);');
 
     if (!empty($config['auto_seed_questions'])) {
         seed_questions_by_role_if_missing($pdo, $config);
+    }
+}
+
+function ensure_role_catalog_columns(PDO $pdo): void
+{
+    $columns = $pdo->query('PRAGMA table_info(role_catalog)')->fetchAll();
+    $names = array_map(static function ($col) {
+        return (string) ($col['name'] ?? '');
+    }, $columns);
+
+    if (!in_array('essay_group', $names, true)) {
+        $pdo->exec("ALTER TABLE role_catalog ADD COLUMN essay_group TEXT NOT NULL DEFAULT 'Floor'");
+    }
+    if (!in_array('sort_order', $names, true)) {
+        $pdo->exec("ALTER TABLE role_catalog ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 999");
+    }
+    if (!in_array('is_active', $names, true)) {
+        $pdo->exec("ALTER TABLE role_catalog ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1");
+    }
+    if (!in_array('created_at', $names, true)) {
+        $pdo->exec("ALTER TABLE role_catalog ADD COLUMN created_at TEXT");
+        $pdo->exec("UPDATE role_catalog SET created_at = COALESCE(created_at, '" . now_iso() . "')");
+    }
+    if (!in_array('updated_at', $names, true)) {
+        $pdo->exec("ALTER TABLE role_catalog ADD COLUMN updated_at TEXT");
+        $pdo->exec("UPDATE role_catalog SET updated_at = COALESCE(updated_at, '" . now_iso() . "')");
+    }
+
+    $pdo->exec("UPDATE role_catalog SET essay_group = 'Floor' WHERE essay_group IS NULL OR TRIM(essay_group) = ''");
+}
+
+function ensure_essay_group_catalog_columns(PDO $pdo): void
+{
+    $columns = $pdo->query('PRAGMA table_info(essay_group_catalog)')->fetchAll();
+    $names = array_map(static function ($col) {
+        return (string) ($col['name'] ?? '');
+    }, $columns);
+
+    if (!in_array('sort_order', $names, true)) {
+        $pdo->exec("ALTER TABLE essay_group_catalog ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 999");
+    }
+    if (!in_array('is_active', $names, true)) {
+        $pdo->exec("ALTER TABLE essay_group_catalog ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1");
+    }
+    if (!in_array('created_at', $names, true)) {
+        $pdo->exec("ALTER TABLE essay_group_catalog ADD COLUMN created_at TEXT");
+        $pdo->exec("UPDATE essay_group_catalog SET created_at = COALESCE(created_at, '" . now_iso() . "')");
+    }
+    if (!in_array('updated_at', $names, true)) {
+        $pdo->exec("ALTER TABLE essay_group_catalog ADD COLUMN updated_at TEXT");
+        $pdo->exec("UPDATE essay_group_catalog SET updated_at = COALESCE(updated_at, '" . now_iso() . "')");
+    }
+}
+
+function seed_master_catalog_if_empty(PDO $pdo, array $config): void
+{
+    $groupCount = (int) $pdo->query('SELECT COUNT(*) FROM essay_group_catalog')->fetchColumn();
+    if ($groupCount <= 0) {
+        $defaults = ['Manager', 'Back office', 'Head Kitchen', 'Kitchen', 'Bar', 'Floor'];
+        $stmt = $pdo->prepare('INSERT INTO essay_group_catalog (group_name, sort_order, is_active, created_at, updated_at) VALUES (?, ?, 1, ?, ?)');
+        $now = now_iso();
+        $i = 1;
+        foreach ($defaults as $name) {
+            $stmt->execute([$name, $i++, $now, $now]);
+        }
+    }
+
+    $roleCount = (int) $pdo->query('SELECT COUNT(*) FROM role_catalog')->fetchColumn();
+    if ($roleCount <= 0) {
+        $defaultRoles = [
+            ['Manager', 'Manager'],
+            ['Back Office', 'Back office'],
+            ['Head Kitchen', 'Head Kitchen'],
+            ['Head Bar', 'Bar'],
+            ['Floor Captain', 'Floor'],
+            ['Cook', 'Kitchen'],
+            ['Cook Helper', 'Kitchen'],
+            ['Steward', 'Kitchen'],
+            ['Mixologist', 'Bar'],
+            ['Server', 'Floor'],
+            ['Housekeeping', 'Floor'],
+        ];
+
+        if (!empty($config['role_options']) && is_array($config['role_options'])) {
+            $known = [];
+            foreach ($defaultRoles as [$roleName]) {
+                $known[$roleName] = true;
+            }
+            foreach ($config['role_options'] as $roleNameRaw) {
+                $roleName = trim((string) $roleNameRaw);
+                if ($roleName === '' || isset($known[$roleName])) {
+                    continue;
+                }
+                $defaultRoles[] = [$roleName, 'Floor'];
+            }
+        }
+
+        $stmt = $pdo->prepare('INSERT INTO role_catalog (role_name, essay_group, sort_order, is_active, created_at, updated_at) VALUES (?, ?, ?, 1, ?, ?)');
+        $now = now_iso();
+        $i = 1;
+        foreach ($defaultRoles as [$roleName, $groupName]) {
+            $stmt->execute([(string) $roleName, (string) $groupName, $i++, $now, $now]);
+        }
     }
 }
 
@@ -1169,6 +1331,360 @@ function create_essay_questions_bulk(PDO $pdo, array $rows, bool $replaceExistin
     }
 }
 
+function list_role_catalog(PDO $pdo, bool $includeInactive = true): array
+{
+    $sql = 'SELECT * FROM role_catalog';
+    if (!$includeInactive) {
+        $sql .= ' WHERE is_active = 1';
+    }
+    $sql .= ' ORDER BY sort_order ASC, role_name ASC, id ASC';
+    $rows = $pdo->query($sql)->fetchAll();
+
+    return array_map(static function (array $row): array {
+        return [
+            'id' => (int) ($row['id'] ?? 0),
+            'role_name' => (string) ($row['role_name'] ?? ''),
+            'essay_group' => (string) ($row['essay_group'] ?? ''),
+            'sort_order' => (int) ($row['sort_order'] ?? 999),
+            'is_active' => ((int) ($row['is_active'] ?? 0)) === 1,
+        ];
+    }, $rows);
+}
+
+function list_essay_group_catalog(PDO $pdo, bool $includeInactive = true): array
+{
+    $sql = 'SELECT * FROM essay_group_catalog';
+    if (!$includeInactive) {
+        $sql .= ' WHERE is_active = 1';
+    }
+    $sql .= ' ORDER BY sort_order ASC, group_name ASC, id ASC';
+    $rows = $pdo->query($sql)->fetchAll();
+
+    return array_map(static function (array $row): array {
+        return [
+            'id' => (int) ($row['id'] ?? 0),
+            'group_name' => (string) ($row['group_name'] ?? ''),
+            'sort_order' => (int) ($row['sort_order'] ?? 999),
+            'is_active' => ((int) ($row['is_active'] ?? 0)) === 1,
+        ];
+    }, $rows);
+}
+
+function find_role_catalog_by_id(PDO $pdo, int $id): ?array
+{
+    $stmt = $pdo->prepare('SELECT * FROM role_catalog WHERE id = ?');
+    $stmt->execute([$id]);
+    $row = $stmt->fetch();
+    return $row ?: null;
+}
+
+function find_essay_group_catalog_by_id(PDO $pdo, int $id): ?array
+{
+    $stmt = $pdo->prepare('SELECT * FROM essay_group_catalog WHERE id = ?');
+    $stmt->execute([$id]);
+    $row = $stmt->fetch();
+    return $row ?: null;
+}
+
+function find_role_catalog_by_name(PDO $pdo, string $roleName): ?array
+{
+    $stmt = $pdo->prepare('SELECT * FROM role_catalog WHERE LOWER(role_name) = LOWER(?) LIMIT 1');
+    $stmt->execute([trim($roleName)]);
+    $row = $stmt->fetch();
+    return $row ?: null;
+}
+
+function create_role_catalog(PDO $pdo, array $payload): void
+{
+    $stmt = $pdo->prepare(
+        'INSERT INTO role_catalog (role_name, essay_group, sort_order, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+    );
+    $now = now_iso();
+    $stmt->execute([
+        trim((string) ($payload['role_name'] ?? '')),
+        trim((string) ($payload['essay_group'] ?? 'Floor')),
+        (int) ($payload['sort_order'] ?? 999),
+        !empty($payload['is_active']) ? 1 : 0,
+        $now,
+        $now,
+    ]);
+}
+
+function update_role_catalog(PDO $pdo, int $id, array $payload): bool
+{
+    $existing = find_role_catalog_by_id($pdo, $id);
+    if (!$existing) {
+        return false;
+    }
+
+    $newRoleName = trim((string) ($payload['role_name'] ?? ''));
+    $oldRoleName = trim((string) ($existing['role_name'] ?? ''));
+    $now = now_iso();
+
+    $pdo->beginTransaction();
+    try {
+        $stmt = $pdo->prepare(
+            'UPDATE role_catalog SET role_name = ?, essay_group = ?, sort_order = ?, is_active = ?, updated_at = ? WHERE id = ?'
+        );
+        $stmt->execute([
+            $newRoleName,
+            trim((string) ($payload['essay_group'] ?? 'Floor')),
+            (int) ($payload['sort_order'] ?? 999),
+            !empty($payload['is_active']) ? 1 : 0,
+            $now,
+            $id,
+        ]);
+
+        if ($newRoleName !== '' && $oldRoleName !== '' && $newRoleName !== $oldRoleName) {
+            $candidateStmt = $pdo->prepare('UPDATE candidates SET selected_role = ? WHERE selected_role = ?');
+            $candidateStmt->execute([$newRoleName, $oldRoleName]);
+        }
+
+        $pdo->commit();
+        return true;
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        throw $e;
+    }
+}
+
+function role_exists_in_catalog(PDO $pdo, string $roleName): bool
+{
+    $stmt = $pdo->prepare('SELECT COUNT(*) FROM role_catalog WHERE LOWER(role_name) = LOWER(?)');
+    $stmt->execute([trim($roleName)]);
+    return (int) $stmt->fetchColumn() > 0;
+}
+
+function migrate_candidate_role_names_with_catalog(PDO $pdo): void
+{
+    $map = [
+        'Server' => 'Server Specialist',
+        'Mixologist' => 'Beverage Specialist',
+        'Cook' => 'Senior Cook',
+        'Server Specialist' => 'Server Specialist',
+        'Beverage Specialist' => 'Beverage Specialist',
+        'Senior Cook' => 'Senior Cook',
+    ];
+
+    $stmt = $pdo->prepare('UPDATE candidates SET selected_role = ? WHERE selected_role = ?');
+    foreach ($map as $old => $new) {
+        if ($old === $new) {
+            continue;
+        }
+        if (!role_exists_in_catalog($pdo, $new)) {
+            continue;
+        }
+        $stmt->execute([$new, $old]);
+    }
+}
+
+function backfill_candidate_essay_question_snapshots(PDO $pdo): void
+{
+    $candidateIds = $pdo->query(
+        "SELECT DISTINCT candidate_id
+         FROM essay_answers
+         WHERE candidate_id NOT IN (SELECT DISTINCT candidate_id FROM candidate_essay_questions)"
+    )->fetchAll(PDO::FETCH_COLUMN);
+
+    if (empty($candidateIds)) {
+        return;
+    }
+
+    $selectRows = $pdo->prepare(
+        "SELECT
+            essay_question_id,
+            role_group_snapshot,
+            question_order_snapshot,
+            question_text_snapshot
+         FROM essay_answers
+         WHERE candidate_id = ?
+         ORDER BY question_order_snapshot ASC, id ASC"
+    );
+    $insert = $pdo->prepare(
+        'INSERT INTO candidate_essay_questions
+            (candidate_id, source_essay_question_id, role_group, question_order, question_text, guidance_text, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)'
+    );
+
+    foreach ($candidateIds as $cidRaw) {
+        $candidateId = (int) $cidRaw;
+        if ($candidateId <= 0) {
+            continue;
+        }
+        $selectRows->execute([$candidateId]);
+        $rows = $selectRows->fetchAll();
+        if (empty($rows)) {
+            continue;
+        }
+
+        $uniqueByOrder = [];
+        foreach ($rows as $row) {
+            $order = (int) ($row['question_order_snapshot'] ?? 0);
+            $text = trim((string) ($row['question_text_snapshot'] ?? ''));
+            $group = trim((string) ($row['role_group_snapshot'] ?? ''));
+            if ($order <= 0 || $text === '') {
+                continue;
+            }
+            if (!isset($uniqueByOrder[$order])) {
+                $uniqueByOrder[$order] = [
+                    'source_essay_question_id' => (int) ($row['essay_question_id'] ?? 0),
+                    'role_group' => $group !== '' ? $group : 'Unknown',
+                    'question_order' => $order,
+                    'question_text' => $text,
+                ];
+            }
+        }
+
+        if (empty($uniqueByOrder)) {
+            continue;
+        }
+        ksort($uniqueByOrder);
+        $now = now_iso();
+        foreach ($uniqueByOrder as $item) {
+            $src = (int) ($item['source_essay_question_id'] ?? 0);
+            $insert->execute([
+                $candidateId,
+                $src > 0 ? $src : null,
+                (string) ($item['role_group'] ?? 'Unknown'),
+                (int) ($item['question_order'] ?? 0),
+                (string) ($item['question_text'] ?? ''),
+                '',
+                $now,
+            ]);
+        }
+    }
+}
+
+function toggle_role_catalog_active(PDO $pdo, int $id): bool
+{
+    $row = find_role_catalog_by_id($pdo, $id);
+    if (!$row) {
+        return false;
+    }
+    $next = ((int) ($row['is_active'] ?? 0) === 1) ? 0 : 1;
+    $stmt = $pdo->prepare('UPDATE role_catalog SET is_active = ?, updated_at = ? WHERE id = ?');
+    $stmt->execute([$next, now_iso(), $id]);
+    return $stmt->rowCount() > 0;
+}
+
+function delete_role_catalog(PDO $pdo, int $id): bool
+{
+    $row = find_role_catalog_by_id($pdo, $id);
+    if (!$row) {
+        return false;
+    }
+    $name = (string) ($row['role_name'] ?? '');
+    if ($name === '') {
+        return false;
+    }
+
+    $refCountStmt = $pdo->prepare('SELECT COUNT(*) FROM candidates WHERE selected_role = ?');
+    $refCountStmt->execute([$name]);
+    $refCount = (int) $refCountStmt->fetchColumn();
+    if ($refCount > 0) {
+        return false;
+    }
+
+    $stmt = $pdo->prepare('DELETE FROM role_catalog WHERE id = ?');
+    $stmt->execute([$id]);
+    return $stmt->rowCount() > 0;
+}
+
+function create_essay_group_catalog(PDO $pdo, array $payload): void
+{
+    $stmt = $pdo->prepare(
+        'INSERT INTO essay_group_catalog (group_name, sort_order, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
+    );
+    $now = now_iso();
+    $stmt->execute([
+        trim((string) ($payload['group_name'] ?? '')),
+        (int) ($payload['sort_order'] ?? 999),
+        !empty($payload['is_active']) ? 1 : 0,
+        $now,
+        $now,
+    ]);
+}
+
+function update_essay_group_catalog(PDO $pdo, int $id, array $payload): bool
+{
+    $existing = find_essay_group_catalog_by_id($pdo, $id);
+    if (!$existing) {
+        return false;
+    }
+
+    $newGroupName = trim((string) ($payload['group_name'] ?? ''));
+    $oldGroupName = trim((string) ($existing['group_name'] ?? ''));
+    $now = now_iso();
+
+    $pdo->beginTransaction();
+    try {
+        $stmt = $pdo->prepare(
+            'UPDATE essay_group_catalog SET group_name = ?, sort_order = ?, is_active = ?, updated_at = ? WHERE id = ?'
+        );
+        $stmt->execute([
+            $newGroupName,
+            (int) ($payload['sort_order'] ?? 999),
+            !empty($payload['is_active']) ? 1 : 0,
+            $now,
+            $id,
+        ]);
+
+        if ($newGroupName !== '' && $oldGroupName !== '' && $newGroupName !== $oldGroupName) {
+            $roleStmt = $pdo->prepare('UPDATE role_catalog SET essay_group = ?, updated_at = ? WHERE essay_group = ?');
+            $roleStmt->execute([$newGroupName, $now, $oldGroupName]);
+
+            $essayStmt = $pdo->prepare('UPDATE essay_questions SET role_group = ?, updated_at = ? WHERE role_group = ?');
+            $essayStmt->execute([$newGroupName, $now, $oldGroupName]);
+        }
+
+        $pdo->commit();
+        return true;
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        throw $e;
+    }
+}
+
+function toggle_essay_group_catalog_active(PDO $pdo, int $id): bool
+{
+    $row = find_essay_group_catalog_by_id($pdo, $id);
+    if (!$row) {
+        return false;
+    }
+    $next = ((int) ($row['is_active'] ?? 0) === 1) ? 0 : 1;
+    $stmt = $pdo->prepare('UPDATE essay_group_catalog SET is_active = ?, updated_at = ? WHERE id = ?');
+    $stmt->execute([$next, now_iso(), $id]);
+    return $stmt->rowCount() > 0;
+}
+
+function delete_essay_group_catalog(PDO $pdo, int $id): bool
+{
+    $row = find_essay_group_catalog_by_id($pdo, $id);
+    if (!$row) {
+        return false;
+    }
+    $name = (string) ($row['group_name'] ?? '');
+    if ($name === '') {
+        return false;
+    }
+
+    $refRoleStmt = $pdo->prepare('SELECT COUNT(*) FROM role_catalog WHERE essay_group = ?');
+    $refRoleStmt->execute([$name]);
+    if ((int) $refRoleStmt->fetchColumn() > 0) {
+        return false;
+    }
+
+    $refQuestionStmt = $pdo->prepare('SELECT COUNT(*) FROM essay_questions WHERE role_group = ?');
+    $refQuestionStmt->execute([$name]);
+    if ((int) $refQuestionStmt->fetchColumn() > 0) {
+        return false;
+    }
+
+    $stmt = $pdo->prepare('DELETE FROM essay_group_catalog WHERE id = ?');
+    $stmt->execute([$id]);
+    return $stmt->rowCount() > 0;
+}
+
 function create_candidate(PDO $pdo, array $payload): int
 {
     $stmt = $pdo->prepare('INSERT INTO candidates (browser_token, full_name, email, email_key, whatsapp, whatsapp_key, selected_role, status, started_at, deadline_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
@@ -1293,20 +1809,77 @@ function get_essay_answers_for_candidate(PDO $pdo, int $candidateId): array
     return $stmt->fetchAll();
 }
 
+function list_candidate_essay_questions(PDO $pdo, int $candidateId): array
+{
+    $stmt = $pdo->prepare(
+        'SELECT id, candidate_id, source_essay_question_id, role_group, question_order, question_text, guidance_text
+         FROM candidate_essay_questions
+         WHERE candidate_id = ?
+         ORDER BY question_order ASC, id ASC'
+    );
+    $stmt->execute([$candidateId]);
+    $rows = $stmt->fetchAll();
+
+    return array_map(static function (array $row): array {
+        return [
+            'id' => (int) ($row['id'] ?? 0),
+            'candidate_id' => (int) ($row['candidate_id'] ?? 0),
+            'source_essay_question_id' => isset($row['source_essay_question_id']) ? (int) $row['source_essay_question_id'] : null,
+            'role_group' => (string) ($row['role_group'] ?? ''),
+            'order' => (int) ($row['question_order'] ?? 0),
+            'question_text' => (string) ($row['question_text'] ?? ''),
+            'guidance_text' => (string) ($row['guidance_text'] ?? ''),
+            'is_snapshot' => true,
+        ];
+    }, $rows);
+}
+
+function ensure_candidate_essay_question_snapshot(PDO $pdo, int $candidateId, array $essayQuestions): array
+{
+    $existing = list_candidate_essay_questions($pdo, $candidateId);
+    if (!empty($existing)) {
+        return $existing;
+    }
+
+    if (empty($essayQuestions)) {
+        return [];
+    }
+
+    $ins = $pdo->prepare(
+        'INSERT INTO candidate_essay_questions
+            (candidate_id, source_essay_question_id, role_group, question_order, question_text, guidance_text, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)'
+    );
+    $now = now_iso();
+    foreach ($essayQuestions as $q) {
+        $sourceId = isset($q['id']) ? (int) $q['id'] : null;
+        $ins->execute([
+            $candidateId,
+            ($sourceId !== null && $sourceId > 0) ? $sourceId : null,
+            (string) ($q['role_group'] ?? ''),
+            (int) ($q['order'] ?? 0),
+            (string) ($q['question_text'] ?? ''),
+            (string) ($q['guidance_text'] ?? ''),
+            $now,
+        ]);
+    }
+
+    return list_candidate_essay_questions($pdo, $candidateId);
+}
+
 function get_essay_answer_details_for_candidate(PDO $pdo, int $candidateId): array
 {
     $stmt = $pdo->prepare(
         "SELECT
             ea.essay_question_id,
-            MAX(ea.answer_text) AS answer_text,
-            COALESCE(MAX(ea.role_group_snapshot), MAX(q.role_group)) AS role_group,
-            COALESCE(MAX(ea.question_order_snapshot), MAX(q.question_order)) AS question_order,
-            COALESCE(MAX(ea.question_text_snapshot), MAX(q.question_text)) AS question_text
+            ea.answer_text,
+            COALESCE(ea.role_group_snapshot, q.role_group) AS role_group,
+            COALESCE(ea.question_order_snapshot, q.question_order) AS question_order,
+            COALESCE(ea.question_text_snapshot, q.question_text) AS question_text
          FROM essay_answers ea
          LEFT JOIN essay_questions q ON q.id = ea.essay_question_id
          WHERE ea.candidate_id = ?
-         GROUP BY ea.essay_question_id
-         ORDER BY COALESCE(MAX(ea.question_order_snapshot), MAX(q.question_order), 999999) ASC, ea.essay_question_id ASC"
+         ORDER BY COALESCE(ea.question_order_snapshot, q.question_order, 999999) ASC, ea.id ASC"
     );
     $stmt->execute([$candidateId]);
     return $stmt->fetchAll();
@@ -1322,16 +1895,41 @@ function save_essay_answers(PDO $pdo, int $candidateId, array $answersByQuestion
     $questionIds = array_values(array_filter(array_map('intval', array_keys($answersByQuestionId)), static fn ($id) => $id > 0));
     if (!empty($questionIds)) {
         $placeholders = implode(',', array_fill(0, count($questionIds), '?'));
-        $stmtMeta = $pdo->prepare("SELECT id, role_group, question_order, question_text FROM essay_questions WHERE id IN ({$placeholders})");
-        $stmtMeta->execute($questionIds);
-        foreach ($stmtMeta->fetchAll() as $row) {
+        $stmtSnap = $pdo->prepare("SELECT id, source_essay_question_id, role_group, question_order, question_text FROM candidate_essay_questions WHERE candidate_id = ? AND id IN ({$placeholders})");
+        $stmtSnap->execute(array_merge([$candidateId], $questionIds));
+        foreach ($stmtSnap->fetchAll() as $row) {
             $qid = (int) ($row['id'] ?? 0);
             if ($qid > 0) {
+                $sourceId = isset($row['source_essay_question_id']) ? (int) $row['source_essay_question_id'] : 0;
                 $questionMeta[$qid] = [
+                    'essay_question_id' => $sourceId > 0 ? $sourceId : $qid,
                     'role_group' => (string) ($row['role_group'] ?? ''),
                     'question_order' => (int) ($row['question_order'] ?? 0),
                     'question_text' => (string) ($row['question_text'] ?? ''),
                 ];
+            }
+        }
+
+        $unresolvedIds = [];
+        foreach ($questionIds as $qid) {
+            if (!isset($questionMeta[$qid])) {
+                $unresolvedIds[] = (int) $qid;
+            }
+        }
+        if (!empty($unresolvedIds)) {
+            $ph2 = implode(',', array_fill(0, count($unresolvedIds), '?'));
+            $stmtMeta = $pdo->prepare("SELECT id, role_group, question_order, question_text FROM essay_questions WHERE id IN ({$ph2})");
+            $stmtMeta->execute($unresolvedIds);
+            foreach ($stmtMeta->fetchAll() as $row) {
+                $qid = (int) ($row['id'] ?? 0);
+                if ($qid > 0) {
+                    $questionMeta[$qid] = [
+                        'essay_question_id' => $qid,
+                        'role_group' => (string) ($row['role_group'] ?? ''),
+                        'question_order' => (int) ($row['question_order'] ?? 0),
+                        'question_text' => (string) ($row['question_text'] ?? ''),
+                    ];
+                }
             }
         }
     }
@@ -1340,10 +1938,10 @@ function save_essay_answers(PDO $pdo, int $candidateId, array $answersByQuestion
     $now = now_iso();
     foreach ($answersByQuestionId as $questionId => $text) {
         $qid = (int) $questionId;
-        $meta = $questionMeta[$qid] ?? ['role_group' => null, 'question_order' => null, 'question_text' => null];
+        $meta = $questionMeta[$qid] ?? ['essay_question_id' => $qid, 'role_group' => null, 'question_order' => null, 'question_text' => null];
         $ins->execute([
             $candidateId,
-            $qid,
+            (int) ($meta['essay_question_id'] ?? $qid),
             $meta['role_group'],
             $meta['question_order'],
             $meta['question_text'],
@@ -1390,6 +1988,31 @@ function list_integrity_events(PDO $pdo, int $candidateId, int $limit = 200): ar
 {
     $safeLimit = max(20, min($limit, 500));
     $stmt = $pdo->prepare("SELECT * FROM integrity_events WHERE candidate_id = ? ORDER BY id DESC LIMIT {$safeLimit}");
+    $stmt->execute([$candidateId]);
+    $rows = $stmt->fetchAll();
+    return array_reverse($rows);
+}
+
+function log_candidate_journey_event(PDO $pdo, int $candidateId, string $phase, string $eventKey, string $eventValue = '', array $payload = []): void
+{
+    $stmt = $pdo->prepare(
+        'INSERT INTO candidate_journey_events (candidate_id, phase, event_key, event_value, payload_json, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)'
+    );
+    $stmt->execute([
+        $candidateId,
+        trim($phase) !== '' ? trim($phase) : 'unknown',
+        trim($eventKey) !== '' ? trim($eventKey) : 'unknown',
+        $eventValue,
+        !empty($payload) ? json_encode($payload, JSON_UNESCAPED_UNICODE) : null,
+        now_iso(),
+    ]);
+}
+
+function list_candidate_journey_events(PDO $pdo, int $candidateId, int $limit = 500): array
+{
+    $safeLimit = max(50, min($limit, 2000));
+    $stmt = $pdo->prepare("SELECT * FROM candidate_journey_events WHERE candidate_id = ? ORDER BY id DESC LIMIT {$safeLimit}");
     $stmt->execute([$candidateId]);
     $rows = $stmt->fetchAll();
     return array_reverse($rows);
@@ -1696,11 +2319,17 @@ function delete_candidate(PDO $pdo, int $id): bool
     $stmtEvent = $pdo->prepare('DELETE FROM integrity_events WHERE candidate_id = ?');
     $stmtEvent->execute([$id]);
 
+    $stmtJourney = $pdo->prepare('DELETE FROM candidate_journey_events WHERE candidate_id = ?');
+    $stmtJourney->execute([$id]);
+
     $stmtTyping = $pdo->prepare('DELETE FROM essay_typing_metrics WHERE candidate_id = ?');
     $stmtTyping->execute([$id]);
 
     $stmtEssay = $pdo->prepare('DELETE FROM essay_answers WHERE candidate_id = ?');
     $stmtEssay->execute([$id]);
+
+    $stmtEssaySnapshot = $pdo->prepare('DELETE FROM candidate_essay_questions WHERE candidate_id = ?');
+    $stmtEssaySnapshot->execute([$id]);
 
     $stmtChecklist = $pdo->prepare('DELETE FROM interview_checklists WHERE candidate_id = ?');
     $stmtChecklist->execute([$id]);

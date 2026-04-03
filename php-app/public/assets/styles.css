@@ -439,6 +439,74 @@ textarea {
   margin-right: auto;
 }
 
+.essay-page .test-header .eyebrow {
+  letter-spacing: 0.06em;
+  font-size: 11px;
+}
+
+.essay-page .test-header .subtitle {
+  font-family: var(--font-display);
+  font-size: 19px;
+  line-height: 1.35;
+  letter-spacing: 0.012em;
+  color: #0f172a;
+}
+
+.essay-page .question-card h3 {
+  font-family: var(--font-display);
+  font-size: 18px;
+  line-height: 1.45;
+  letter-spacing: 0.01em;
+  color: #0f172a;
+}
+
+.essay-page .question-card label {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #334155;
+}
+
+.essay-page textarea {
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.75;
+  letter-spacing: 0.01em;
+  color: #0f172a;
+  border-radius: 12px;
+  border-color: #cbd5e1;
+}
+
+.essay-page textarea::placeholder {
+  color: #94a3b8;
+}
+
+.essay-page textarea:focus {
+  border-color: #0284c7;
+  box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.14);
+}
+
+@media (max-width: 640px) {
+  .essay-page .test-header .subtitle {
+    font-size: 16px;
+    line-height: 1.4;
+  }
+
+  .essay-page .question-card h3 {
+    font-size: 15px;
+    line-height: 1.45;
+  }
+
+  .essay-page .question-card label {
+    font-size: 12px;
+  }
+
+  .essay-page textarea {
+    font-size: 14px;
+    line-height: 1.65;
+  }
+}
+
 .progress-panel {
   background: #fff;
   border: 1px solid var(--border);
@@ -751,6 +819,52 @@ textarea {
 
 .check-inline input[type='checkbox'] {
   width: auto;
+}
+
+.checkbox-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.checkbox-inline input[type='checkbox'] {
+  width: auto;
+}
+
+.multi-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.toast {
+  border-radius: 10px;
+  padding: 10px 12px;
+  border: 1px solid #cbd5e1;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.toast-success {
+  background: #ecfdf5;
+  border-color: #86efac;
+  color: #166534;
+}
+
+.toast-error {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #991b1b;
+}
+
+.toast-info {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1d4ed8;
 }
 
 table {

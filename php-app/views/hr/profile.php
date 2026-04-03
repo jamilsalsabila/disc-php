@@ -130,7 +130,7 @@
               <?php $essayQuestionRaw = trim((string) ($row['question_text'] ?? '')); ?>
               <?php $essayQuestion = $essayQuestionRaw !== '' ? $essayQuestionRaw : '(Soal sudah tidak tersedia di bank soal)'; ?>
               <?php $essayAnswerRaw = trim((string) ($row['answer_text'] ?? '')); ?>
-              <?php $essayAnswer = $essayAnswerRaw !== '' ? $essayAnswerRaw : 'Kosong (tidak dijawab)'; ?>
+              <?php $essayAnswer = $essayAnswerRaw !== '' ? $essayAnswerRaw : ''; ?>
               <td class="pa-col-question"><span class="cell-clamp" title="<?= h($essayQuestion) ?>"><?= h($essayQuestion) ?></span></td>
               <td class="pa-col-answer"><span class="cell-wrap" title="<?= h($essayAnswer) ?>"><?= h($essayAnswer) ?></span></td>
             </tr>
@@ -180,6 +180,39 @@
         <?php endif; ?>
       </tbody>
     </table>
+  </section>
+
+  <section class="table-card answer-card u-mt-12">
+    <details>
+      <summary><strong>Event Timeline Lengkap (Snapshot Journey)</strong></summary>
+      <table class="admin-table answer-table profile-answer-table event-answer-table u-mt-12">
+        <thead>
+          <tr>
+            <th class="pa-col-time">Waktu</th>
+            <th class="pa-col-phase">Fase</th>
+            <th class="pa-col-event">Event</th>
+            <th class="pa-col-value">Nilai</th>
+            <th class="pa-col-value">Metadata Snapshot</th>
+          </tr>
+        </thead>
+        <tbody>
+          <?php if (!empty($journey_events)): ?>
+            <?php foreach ($journey_events as $ev): ?>
+              <tr>
+                <?php $timeLabel = (string) format_date_id((string) ($ev['created_at'] ?? '')); ?>
+                <td class="pa-col-time"><span class="event-time cell-clamp" title="<?= h($timeLabel) ?>"><?= h($timeLabel) ?></span></td>
+                <td class="pa-col-phase"><span class="event-text cell-clamp" title="<?= h((string) ($ev['phase_label'] ?? '-')) ?>"><?= h((string) ($ev['phase_label'] ?? '-')) ?></span></td>
+                <td class="pa-col-event"><span class="event-text cell-clamp" title="<?= h((string) ($ev['event_label'] ?? '-')) ?>"><?= h((string) ($ev['event_label'] ?? '-')) ?></span></td>
+                <td class="pa-col-value"><span class="event-text cell-clamp" title="<?= h((string) ($ev['value_label'] ?? '-')) ?>"><?= h((string) ($ev['value_label'] ?? '-')) ?></span></td>
+                <td class="pa-col-value"><span class="event-text cell-wrap" title="<?= h((string) ($ev['payload_text'] ?? '-')) ?>"><?= h((string) ($ev['payload_text'] ?? '-')) ?></span></td>
+              </tr>
+            <?php endforeach; ?>
+          <?php else: ?>
+            <tr><td colspan="5">Belum ada event journey.</td></tr>
+          <?php endif; ?>
+        </tbody>
+      </table>
+    </details>
   </section>
 
   <section class="table-card answer-card u-mt-12">

@@ -8,17 +8,25 @@ Versi produksi aplikasi asesmen DISC berbasis PHP + SQLite.
 - Autosave jawaban parsial kandidat.
 - Auto-finalize kandidat timeout saat ada request admin/kandidat (tanpa cron wajib).
 - Dashboard HR (SPA/filter async, chart, profil kandidat).
+- Master Data HR:
+  - CRUD Role Kandidat.
+  - CRUD Kelompok Soal Esai.
+  - Mapping Role -> Kelompok Esai dikelola dari dashboard (dinamis, tidak hardcoded).
 - Template checklist wawancara HR per kandidat (tersimpan, editable).
 - Integritas tes versi ringan: deteksi `tab switch` dan `paste` selama tes (indikator risiko untuk HR).
 - Integritas tes versi lanjutan:
   - event timeline kandidat (phase events),
   - typing pattern metrics untuk jawaban esai (keystroke/input/paste/active time).
+- Snapshot data kandidat (anti bentrok saat bank soal berubah):
+  - Snapshot soal esai per kandidat disimpan ke DB saat masuk fase esai (`candidate_essay_questions`).
+  - Jawaban esai + metadata snapshot tetap konsisten untuk profile/export meski role/group/soal diubah setelahnya.
+  - Event Timeline Lengkap (Snapshot Journey) tersimpan append-only di DB (`candidate_journey_events`) dari awal sampai submit akhir.
 - Integrasi evaluasi AI (opsional):
   - tombol `Generate/Regenerate Analisis AI` di profil kandidat,
   - menyimpan skor AI, konklusi, saran posisi, strengths/risks/follow-up.
 - CRUD soal manual.
 - CRUD bank soal esai (manual) untuk persiapan asesmen tulisan.
-  - Kelompok soal esai: `Manager`, `Back office`, `Head Kitchen`, `Kitchen`, `Bar`, `Floor`.
+  - Kelompok soal mengikuti Master Data (dinamis).
   - Pada form tambah soal esai, `Urutan Soal` otomatis menyesuaikan urutan berikutnya berdasarkan kelompok role yang dipilih.
   - Halaman `Kelola Soal Esai` mendukung pagination (`10/20/50/100`) dan sort (default, urutan, kelompok, status, update, id).
 - Bulk upload soal via CSV:
@@ -34,7 +42,7 @@ Versi produksi aplikasi asesmen DISC berbasis PHP + SQLite.
   - tombol `Pilih Semua` bersifat toggle (klik lagi untuk membatalkan semua centang),
   - tombol `Delete` menghapus semua soal yang sedang dipilih.
 - Export data kandidat dan jawaban.
-  - Export per kandidat (CSV/PDF) mencakup: ringkasan, jawaban DISC, jawaban esai, event timeline, typing metrics, dan catatan HR.
+  - Export per kandidat (CSV/PDF) mencakup: ringkasan, jawaban DISC, jawaban esai, event timeline, event timeline lengkap (snapshot journey), typing metrics, dan catatan HR.
 - UI admin lebih rapih dan konsisten:
   - mode tabel `Compact/Normal` (preferensi tersimpan di browser),
   - tabel `Kelola Soal DISC`, `Kelola Soal Esai`, dashboard, dan profil kandidat lebih compact,
@@ -48,10 +56,8 @@ Versi produksi aplikasi asesmen DISC berbasis PHP + SQLite.
 
 - Bank soal aktif saat ini berjalan dengan scope `Role: All` (one-for-all).
 - Mapping DISC disimpan per soal (`disc_a`, `disc_b`, `disc_c`, `disc_d`) dan dipakai langsung saat scoring.
-- Mapping role ke kelompok esai:
-  - `Head Kitchen` -> `Head Kitchen` (khusus),
-  - `Cook`, `Cook Helper`, `Steward` -> `Kitchen`,
-  - role lain mengikuti kelompok masing-masing (`Manager`, `Back office`, `Bar`, `Floor`).
+- Mapping role ke kelompok esai diambil dari Master Data (`role_catalog`), sehingga bisa diubah via dashboard.
+- Jika nama kelompok esai diubah dari Master Data, mapping role dan bank soal esai ikut disesuaikan (cascade update).
 
 ## Aturan scoring ringkas
 

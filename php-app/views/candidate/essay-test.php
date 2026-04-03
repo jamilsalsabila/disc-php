@@ -1,4 +1,4 @@
-<main class="test-page" data-deadline="<?= h($essay_deadline_at ?? '') ?>">
+<main class="test-page essay-page" data-deadline="<?= h($essay_deadline_at ?? '') ?>">
   <header class="test-header">
     <div>
       <p class="eyebrow">Kandidat: <?= h($candidate['full_name'] ?? '-') ?></p>
