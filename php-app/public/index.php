@@ -2257,6 +2257,7 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)/export/answers\.csv$
     fputcsv($out, [
         'Candidate ID', 'Nama', 'Email', 'WA', 'Role Dipilih', 'Rekomendasi', 'Status',
         'No Soal', 'Role Soal', 'Most', 'Most Text', 'Least', 'Least Text',
+        'Mapping A->DISC', 'Mapping B->DISC', 'Mapping C->DISC', 'Mapping D->DISC',
     ]);
     foreach ($rows as $row) {
         $mostCode = (string) ($row['most_code'] ?? '');
@@ -2275,6 +2276,10 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)/export/answers\.csv$
             answer_option_text($row, $mostCode),
             $leastCode !== '' ? $leastCode : '-',
             answer_option_text($row, $leastCode),
+            'A->' . strtoupper((string) ($row['disc_a'] ?? '-')),
+            'B->' . strtoupper((string) ($row['disc_b'] ?? '-')),
+            'C->' . strtoupper((string) ($row['disc_c'] ?? '-')),
+            'D->' . strtoupper((string) ($row['disc_d'] ?? '-')),
         ]);
     }
 
@@ -2439,15 +2444,20 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)/export/answers\.pdf$
     echo '<p>Gunakan menu browser: Print -> Save as PDF.</p>';
 
     echo '<h3>Jawaban DISC</h3>';
-    echo '<table><thead><tr><th>No</th><th>Role Soal</th><th>Most</th><th>Least</th></tr></thead><tbody>';
+    echo '<table><thead><tr><th>No</th><th>Role Soal</th><th>Most</th><th>Least</th><th>Mapping DISC</th></tr></thead><tbody>';
     foreach ($rows as $row) {
         $mostCode = (string) ($row['most_code'] ?? '');
         $leastCode = (string) ($row['least_code'] ?? '');
+        $mappingText = 'A->' . strtoupper((string) ($row['disc_a'] ?? '-'))
+            . ' | B->' . strtoupper((string) ($row['disc_b'] ?? '-'))
+            . ' | C->' . strtoupper((string) ($row['disc_c'] ?? '-'))
+            . ' | D->' . strtoupper((string) ($row['disc_d'] ?? '-'));
         echo '<tr>'
             . '<td>' . h((string) ((int) ($row['question_order'] ?? 0))) . '</td>'
             . '<td>' . h((string) ($row['question_role'] ?? '-')) . '</td>'
             . '<td><strong>' . h($mostCode !== '' ? $mostCode : '-') . '</strong><br>' . h(answer_option_text($row, $mostCode)) . '</td>'
             . '<td><strong>' . h($leastCode !== '' ? $leastCode : '-') . '</strong><br>' . h(answer_option_text($row, $leastCode)) . '</td>'
+            . '<td>' . h($mappingText) . '</td>'
             . '</tr>';
     }
     echo '</tbody></table>';

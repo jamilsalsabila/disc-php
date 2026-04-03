@@ -2267,6 +2267,10 @@ function get_answer_details_for_candidate_export(PDO $pdo, int $candidateId): ar
             q.option_b,
             q.option_c,
             q.option_d,
+            q.disc_a,
+            q.disc_b,
+            q.disc_c,
+            q.disc_d,
             MAX(CASE WHEN a.answer_type = 'most' THEN a.option_code END) AS most_code,
             MAX(CASE WHEN a.answer_type = 'least' THEN a.option_code END) AS least_code
         FROM answers a
@@ -2298,6 +2302,10 @@ function list_answer_details_for_export(PDO $pdo): array
             q.option_b,
             q.option_c,
             q.option_d,
+            q.disc_a,
+            q.disc_b,
+            q.disc_c,
+            q.disc_d,
             MAX(CASE WHEN a.answer_type = 'most' THEN a.option_code END) AS most_code,
             MAX(CASE WHEN a.answer_type = 'least' THEN a.option_code END) AS least_code
         FROM answers a
