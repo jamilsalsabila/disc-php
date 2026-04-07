@@ -7,6 +7,14 @@
     <div class="hr-actions">
       <button type="button" class="btn-secondary compact-toggle-btn" data-compact-toggle aria-pressed="false">Tabel: Normal</button>
       <button type="button" class="btn-secondary" id="timeout-refresh-btn">Refresh Status</button>
+      <form method="post" action="<?= h(route_path('/hr/tools/normalize-legacy-essay')) ?>" class="inline-form" onsubmit="return confirm('Jalankan perbaikan data lama sekarang? Sistem akan backup dulu sebelum normalisasi.');">
+        <input type="hidden" name="_csrf" value="<?= h($csrf_token) ?>">
+        <button type="submit" class="btn-secondary">Perbaiki Data Lama</button>
+      </form>
+      <form method="post" action="<?= h(route_path('/hr/tools/normalize-legacy-essay-preview')) ?>" class="inline-form">
+        <input type="hidden" name="_csrf" value="<?= h($csrf_token) ?>">
+        <button type="submit" class="btn-secondary">Preview Perbaikan</button>
+      </form>
       <a href="<?= h(route_path('/hr/questions')) ?>" class="btn-secondary">Kelola Soal DISC</a>
       <a href="<?= h(route_path('/hr/essay-questions')) ?>" class="btn-secondary">Kelola Soal Esai</a>
       <a href="<?= h(route_path('/hr/master-data')) ?>" class="btn-secondary">Kelola Role & Kelompok</a>
@@ -19,6 +27,12 @@
       </form>
     </div>
   </header>
+
+  <?php if (!empty($flash_message)): ?>
+    <div class="alert <?= ($flash_type ?? 'info') === 'error' ? 'alert-danger' : 'alert-success' ?>">
+      <?= h((string) $flash_message) ?>
+    </div>
+  <?php endif; ?>
 
   <section class="chart-grid">
     <article class="chart-card chart-card-role">

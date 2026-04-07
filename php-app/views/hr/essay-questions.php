@@ -152,10 +152,32 @@
     </form>
 
     <div class="u-space-10"></div>
+    <?php
+      $stateQuery = [];
+      if (($group_filter ?? '') !== '') {
+          $stateQuery['group'] = (string) $group_filter;
+      }
+      if (($sort_by ?? 'default') !== 'default') {
+          $stateQuery['sort_by'] = (string) $sort_by;
+      }
+      if (($sort_dir ?? 'asc') !== 'asc') {
+          $stateQuery['sort_dir'] = (string) $sort_dir;
+      }
+      if ((int) (($pagination['per_page'] ?? 20)) !== 20) {
+          $stateQuery['per_page'] = (int) ($pagination['per_page'] ?? 20);
+      }
+      if ((int) (($pagination['page'] ?? 1)) > 1) {
+          $stateQuery['page'] = (int) ($pagination['page'] ?? 1);
+      }
+      $stateQueryString = http_build_query($stateQuery);
+    ?>
     <div class="hr-actions u-mb-10">
       <button type="button" id="essay-select-all-btn" class="btn-secondary">Pilih Semua</button>
       <form id="essay-bulk-delete-form" method="post" action="<?= h(route_path('/hr/essay-questions/bulk-delete')) ?>" class="inline-form">
         <input type="hidden" name="_csrf" value="<?= h($csrf_token) ?>">
+        <?php if ($stateQueryString !== ''): ?>
+          <input type="hidden" name="return_query" value="<?= h($stateQueryString) ?>">
+        <?php endif; ?>
         <input type="hidden" name="ids_csv" id="essay-selected-ids" value="">
         <button type="button" id="essay-delete-selected-btn" class="btn-danger-outline" disabled>Delete</button>
       </form>
@@ -200,13 +222,25 @@
               </td>
               <td class="eq-col-action">
                 <div class="table-actions">
-                  <a href="<?= h(route_path('/hr/essay-questions/' . $q['id'] . '/edit')) ?>" class="table-link btn-detail action-btn">Edit</a>
+                  <?php
+                    $editPath = '/hr/essay-questions/' . $q['id'] . '/edit';
+                    if ($stateQueryString !== '') {
+                        $editPath .= '?' . $stateQueryString;
+                    }
+                  ?>
+                  <a href="<?= h(route_path($editPath)) ?>" class="table-link btn-detail action-btn">Edit</a>
                 <form method="post" action="<?= h(route_path('/hr/essay-questions/' . $q['id'] . '/toggle-active')) ?>" class="inline-form">
                   <input type="hidden" name="_csrf" value="<?= h($csrf_token) ?>">
+                  <?php if ($stateQueryString !== ''): ?>
+                    <input type="hidden" name="return_query" value="<?= h($stateQueryString) ?>">
+                  <?php endif; ?>
                   <button type="submit" class="btn-secondary btn-xs action-btn"><?= $q['is_active'] ? 'Nonaktifkan' : 'Aktifkan' ?></button>
                 </form>
                 <form method="post" action="<?= h(route_path('/hr/essay-questions/' . $q['id'] . '/delete')) ?>" class="inline-form" onsubmit="return confirm('Hapus soal esai ini?');">
                   <input type="hidden" name="_csrf" value="<?= h($csrf_token) ?>">
+                  <?php if ($stateQueryString !== ''): ?>
+                    <input type="hidden" name="return_query" value="<?= h($stateQueryString) ?>">
+                  <?php endif; ?>
                   <button type="submit" class="btn-danger-outline btn-xs action-btn">Hapus</button>
                 </form>
                 </div>

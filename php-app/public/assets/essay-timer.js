@@ -48,6 +48,13 @@
     return String(value).padStart(2, '0');
   }
 
+  function formatSavedAt(iso) {
+    if (!iso) return '';
+    const dt = new Date(iso);
+    if (Number.isNaN(dt.getTime())) return '';
+    return `${pad(dt.getHours())}:${pad(dt.getMinutes())}:${pad(dt.getSeconds())}`;
+  }
+
   function setAutosaveStatus(state, text) {
     if (!autosaveStatusEl) {
       return;
@@ -242,7 +249,11 @@
         if (!response.ok) {
           throw new Error('Autosave failed');
         }
-        setAutosaveStatus('is-saved', 'Tersimpan');
+        return response.json();
+      })
+      .then((payload) => {
+        const savedAt = formatSavedAt(payload && payload.last_autosave_at ? payload.last_autosave_at : '');
+        setAutosaveStatus('is-saved', savedAt ? `Tersimpan ${savedAt}` : 'Tersimpan');
       })
       .catch(() => {
         setAutosaveStatus('is-error', 'Gagal simpan');
@@ -351,7 +362,7 @@
   setAutosaveStatus('is-idle', 'Autosave aktif');
   sendIntegrityEvent('page_open', 'essay');
 
-  window.addEventListener('beforeunload', () => {
+  function flushAutosaveOnExit() {
     if (isAutoSubmitting) {
       return;
     }
@@ -364,5 +375,8 @@
     }
     saveTypingMetrics();
     sendIntegrityEvent('before_unload', 'essay');
-  });
+  }
+
+  window.addEventListener('beforeunload', flushAutosaveOnExit);
+  window.addEventListener('pagehide', flushAutosaveOnExit);
 })();

@@ -15,6 +15,9 @@
 
     <form method="post" action="<?= h($action_url) ?>" class="identity-form">
       <input type="hidden" name="_csrf" value="<?= h($csrf_token) ?>">
+      <?php if (!empty($return_query)): ?>
+        <input type="hidden" name="return_query" value="<?= h((string) $return_query) ?>">
+      <?php endif; ?>
 
       <label>
         Kelompok Role
@@ -50,7 +53,13 @@
         <?php if (!empty($is_create)): ?>
           <button type="submit" name="save_and_add" value="1" class="btn-secondary">Simpan & Tambah Lagi</button>
         <?php endif; ?>
-        <a href="<?= h(route_path('/hr/essay-questions')) ?>" class="btn-secondary">Batal</a>
+        <?php
+          $cancelPath = '/hr/essay-questions';
+          if (!empty($return_query)) {
+              $cancelPath .= '?' . (string) $return_query;
+          }
+        ?>
+        <a href="<?= h(route_path($cancelPath)) ?>" class="btn-secondary">Batal</a>
       </div>
     </form>
   </section>

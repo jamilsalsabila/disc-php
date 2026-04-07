@@ -42,7 +42,8 @@ Versi produksi aplikasi asesmen DISC berbasis PHP + SQLite.
   - tombol `Pilih Semua` bersifat toggle (klik lagi untuk membatalkan semua centang),
   - tombol `Delete` menghapus semua soal yang sedang dipilih.
 - Export data kandidat dan jawaban.
-  - Export per kandidat (CSV/PDF) mencakup: ringkasan, jawaban DISC, jawaban esai, event timeline, event timeline lengkap (snapshot journey), typing metrics, dan catatan HR.
+  - Export per kandidat (CSV/PDF/Word) mencakup: ringkasan, jawaban DISC, jawaban esai, event timeline, event timeline lengkap (snapshot journey), typing metrics, dan catatan HR.
+  - Ringkasan export juga menampilkan `Jawaban DISC terisi X/Y` dan `Jawaban Esai terisi X/Y`.
 - UI admin lebih rapih dan konsisten:
   - mode tabel `Compact/Normal` (preferensi tersimpan di browser),
   - tabel `Kelola Soal DISC`, `Kelola Soal Esai`, dashboard, dan profil kandidat lebih compact,

@@ -36,6 +36,13 @@
     return String(value).padStart(2, '0');
   }
 
+  function formatSavedAt(iso) {
+    if (!iso) return '';
+    const dt = new Date(iso);
+    if (Number.isNaN(dt.getTime())) return '';
+    return `${pad(dt.getHours())}:${pad(dt.getMinutes())}:${pad(dt.getSeconds())}`;
+  }
+
   function tick() {
     const now = Date.now();
     const diffMs = deadline - now;
@@ -238,7 +245,11 @@
         if (!response.ok) {
           throw new Error('Autosave failed');
         }
-        setAutosaveStatus('is-saved', 'Tersimpan');
+        return response.json();
+      })
+      .then((payload) => {
+        const savedAt = formatSavedAt(payload && payload.last_autosave_at ? payload.last_autosave_at : '');
+        setAutosaveStatus('is-saved', savedAt ? `Tersimpan ${savedAt}` : 'Tersimpan');
       })
       .catch(() => {
         setAutosaveStatus('is-error', 'Gagal simpan');
@@ -346,7 +357,7 @@
     sendIntegrityEvent('paste_detected', 'disc');
   });
 
-  window.addEventListener('beforeunload', () => {
+  function flushAutosaveOnExit() {
     if (isAutoSubmitting) {
       return;
     }
@@ -359,5 +370,8 @@
     }
     sendIntegrityEvent('before_unload', 'disc');
     saveProgress();
-  });
+  }
+
+  window.addEventListener('beforeunload', flushAutosaveOnExit);
+  window.addEventListener('pagehide', flushAutosaveOnExit);
 })();

@@ -55,6 +55,7 @@ function migrate(PDO $pdo, array $config): void
             integrity_tab_switches INTEGER DEFAULT 0,
             integrity_paste_count INTEGER DEFAULT 0,
             draft_answers_json TEXT,
+            last_autosave_at TEXT,
             created_at TEXT NOT NULL
         );"
     );
@@ -277,6 +278,7 @@ function migrate(PDO $pdo, array $config): void
     ensure_candidate_integrity_columns($pdo);
     ensure_candidate_phase_columns($pdo);
     ensure_candidate_draft_essay_answers_column($pdo);
+    ensure_candidate_last_autosave_column($pdo);
     ensure_essay_questions_role_group_column($pdo);
     ensure_essay_answers_snapshot_columns($pdo);
     ensure_role_catalog_columns($pdo);
@@ -614,6 +616,18 @@ function ensure_candidate_draft_essay_answers_column(PDO $pdo): void
 
     if (!in_array('draft_essay_answers_json', $names, true)) {
         $pdo->exec('ALTER TABLE candidates ADD COLUMN draft_essay_answers_json TEXT');
+    }
+}
+
+function ensure_candidate_last_autosave_column(PDO $pdo): void
+{
+    $columns = $pdo->query('PRAGMA table_info(candidates)')->fetchAll();
+    $names = array_map(static function ($col) {
+        return (string) ($col['name'] ?? '');
+    }, $columns);
+
+    if (!in_array('last_autosave_at', $names, true)) {
+        $pdo->exec('ALTER TABLE candidates ADD COLUMN last_autosave_at TEXT');
     }
 }
 
@@ -1775,21 +1789,25 @@ function save_submission(PDO $pdo, array $payload): bool
     return $updated;
 }
 
-function update_candidate_draft_answers(PDO $pdo, int $candidateId, array $answers): bool
+function update_candidate_draft_answers(PDO $pdo, int $candidateId, array $answers, ?string $savedAt = null): bool
 {
-    $stmt = $pdo->prepare("UPDATE candidates SET draft_answers_json = ? WHERE id = ? AND status = 'in_progress'");
+    $ts = $savedAt ?? now_iso();
+    $stmt = $pdo->prepare("UPDATE candidates SET draft_answers_json = ?, last_autosave_at = ? WHERE id = ? AND status = 'in_progress'");
     $stmt->execute([
         json_encode($answers, JSON_UNESCAPED_UNICODE),
+        $ts,
         $candidateId,
     ]);
     return $stmt->rowCount() > 0;
 }
 
-function update_candidate_draft_essay_answers(PDO $pdo, int $candidateId, array $answers): bool
+function update_candidate_draft_essay_answers(PDO $pdo, int $candidateId, array $answers, ?string $savedAt = null): bool
 {
-    $stmt = $pdo->prepare("UPDATE candidates SET draft_essay_answers_json = ? WHERE id = ? AND status = 'in_progress'");
+    $ts = $savedAt ?? now_iso();
+    $stmt = $pdo->prepare("UPDATE candidates SET draft_essay_answers_json = ?, last_autosave_at = ? WHERE id = ? AND status = 'in_progress'");
     $stmt->execute([
         json_encode($answers, JSON_UNESCAPED_UNICODE),
+        $ts,
         $candidateId,
     ]);
     return $stmt->rowCount() > 0;

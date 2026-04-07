@@ -246,6 +246,103 @@ function typing_risk_from_rows(array $rows): array
     return ['level' => $level, 'score' => $score];
 }
 
+function focus_loss_severity_from_events(array $events, array $candidate = []): array
+{
+    $tabSwitches = 0;
+    $beforeUnload = 0;
+    foreach ($events as $ev) {
+        $type = strtolower(trim((string) ($ev['event_type'] ?? '')));
+        if ($type === 'tab_switch') {
+            $tabSwitches++;
+        } elseif ($type === 'before_unload') {
+            $beforeUnload++;
+        }
+    }
+
+    $durationSec = max(1, (int) ($candidate['duration_seconds'] ?? 0));
+    $score = ($tabSwitches * 3) + ($beforeUnload * 2);
+    $switchPer10Min = ($tabSwitches * 600) / max(60, $durationSec);
+
+    if ($tabSwitches >= 8) {
+        $score += 5;
+    } elseif ($tabSwitches >= 4) {
+        $score += 2;
+    }
+
+    if ($switchPer10Min >= 6) {
+        $score += 4;
+    } elseif ($switchPer10Min >= 3) {
+        $score += 2;
+    }
+
+    $level = 'Low';
+    if ($score >= 16) {
+        $level = 'High';
+    } elseif ($score >= 8) {
+        $level = 'Medium';
+    }
+
+    return [
+        'level' => $level,
+        'score' => $score,
+        'tab_switches' => $tabSwitches,
+        'before_unload' => $beforeUnload,
+        'switch_per_10min' => round($switchPer10Min, 2),
+    ];
+}
+
+function latency_paste_anomaly_from_rows(array $rows): array
+{
+    $score = 0;
+    $flaggedRows = 0;
+
+    foreach ($rows as $row) {
+        $chars = max(0, (int) ($row['total_chars'] ?? 0));
+        $paste = max(0, (int) ($row['paste_count'] ?? 0));
+        $keystrokes = max(0, (int) ($row['keystrokes'] ?? 0));
+        $inputEvents = max(0, (int) ($row['input_events'] ?? 0));
+        $activeSec = max(1.0, ((int) ($row['active_ms'] ?? 0)) / 1000);
+
+        $localScore = 0;
+        if ($chars >= 180 && $activeSec <= 20) {
+            $localScore += 5;
+        }
+        if ($chars >= 240 && $activeSec <= 30) {
+            $localScore += 4;
+        }
+        if ($paste >= 1 && $chars >= 120) {
+            $localScore += 3;
+        }
+        if ($paste >= 2) {
+            $localScore += 5;
+        }
+        if ($chars >= 200 && $keystrokes <= 25) {
+            $localScore += 4;
+        }
+        if ($chars >= 160 && $inputEvents <= 5) {
+            $localScore += 3;
+        }
+
+        if ($localScore > 0) {
+            $flaggedRows++;
+            $score += $localScore;
+        }
+    }
+
+    $level = 'Low';
+    if ($score >= 16) {
+        $level = 'High';
+    } elseif ($score >= 8) {
+        $level = 'Medium';
+    }
+
+    return [
+        'level' => $level,
+        'score' => $score,
+        'flagged_rows' => $flaggedRows,
+    ];
+}
+
 function integrity_phase_label(?string $phase): string
 {
     $map = [
@@ -479,6 +576,27 @@ function count_filled_essay_answers(array $answers): int
     return $count;
 }
 
+function merge_essay_answers_with_fallback(array $primary, array $fallback): array
+{
+    $merged = [];
+    foreach ($fallback as $qidRaw => $text) {
+        $qid = (int) $qidRaw;
+        $value = trim((string) $text);
+        if ($qid > 0 && $value !== '') {
+            $merged[$qid] = $value;
+        }
+    }
+    foreach ($primary as $qidRaw => $text) {
+        $qid = (int) $qidRaw;
+        $value = trim((string) $text);
+        if ($qid > 0 && $value !== '') {
+            $merged[$qid] = $value;
+        }
+    }
+    ksort($merged);
+    return $merged;
+}
+
 function remap_draft_essay_answers_to_snapshot(array $draftAnswers, array $essayQuestions): array
 {
     if (empty($draftAnswers) || empty($essayQuestions)) {
@@ -518,6 +636,44 @@ function remap_draft_essay_answers_to_snapshot(array $draftAnswers, array $essay
     }
 
     return $normalized;
+}
+
+function format_journey_payload_text(string $eventKey, array $payload): string
+{
+    if ($eventKey === 'essay_autosave') {
+        $filled = isset($payload['filled_count']) ? (int) $payload['filled_count'] : null;
+        $total = isset($payload['total_count']) ? (int) $payload['total_count'] : null;
+        $saved = isset($payload['saved_count']) ? (int) $payload['saved_count'] : null;
+        $parts = [];
+        if ($filled !== null && $total !== null && $total > 0) {
+            $parts[] = 'terisi=' . $filled . '/' . $total;
+        } elseif ($saved !== null) {
+            $parts[] = 'tersimpan=' . $saved;
+        }
+        if (isset($payload['group'])) {
+            $parts[] = 'kelompok=' . (string) $payload['group'];
+        }
+        if (isset($payload['last_autosave_at'])) {
+            $parts[] = 'autosave=' . (string) $payload['last_autosave_at'];
+        }
+        return !empty($parts) ? implode(' | ', $parts) : '-';
+    }
+
+    if ($eventKey === 'typing_metrics_saved') {
+        $saved = isset($payload['saved_count']) ? (int) $payload['saved_count'] : null;
+        return $saved !== null ? ('baris_metrics=' . $saved) : '-';
+    }
+
+    $parts = [];
+    foreach ($payload as $k => $v) {
+        if (is_array($v)) {
+            $v = implode(',', array_map('strval', $v));
+        } elseif (is_bool($v)) {
+            $v = $v ? 'true' : 'false';
+        }
+        $parts[] = (string) $k . '=' . (string) $v;
+    }
+    return !empty($parts) ? implode(' | ', $parts) : '-';
 }
 
 function merge_answers_with_fallback(array $primary, array $fallback): array
@@ -594,6 +750,7 @@ function parse_candidate_profile_answers(array $answers): array
 
 function normalize_essay_profile_rows(array $rows, ?string $expectedGroup = null, array $expectedQuestions = [], bool $includeUnanswered = false): array
 {
+    $expectedGroupNorm = trim((string) ($expectedGroup ?? ''));
     $map = [];
     $idx = 0;
     $unresolved = [];
@@ -602,6 +759,10 @@ function normalize_essay_profile_rows(array $rows, ?string $expectedGroup = null
         $group = trim((string) ($row['role_group'] ?? ''));
         $question = trim((string) ($row['question_text'] ?? ''));
         $answer = trim((string) ($row['answer_text'] ?? ''));
+
+        if ($expectedGroupNorm !== '' && $group !== '' && strcasecmp($group, $expectedGroupNorm) !== 0) {
+            continue;
+        }
 
         if ($answer === '') {
             continue;
@@ -717,6 +878,385 @@ function normalize_essay_profile_rows(array $rows, ?string $expectedGroup = null
     });
 
     return $values;
+}
+
+function build_expected_essay_questions_for_display(PDO $pdo, int $candidateId, ?string $expectedGroup = null): array
+{
+    $snapshotQuestions = list_candidate_essay_questions($pdo, $candidateId);
+    $expectedGroupNorm = trim((string) ($expectedGroup ?? ''));
+    if ($expectedGroupNorm !== '') {
+        $snapshotQuestions = array_values(array_filter(
+            $snapshotQuestions,
+            static function (array $q) use ($expectedGroupNorm): bool {
+                $g = trim((string) ($q['role_group'] ?? ''));
+                return $g !== '' && strcasecmp($g, $expectedGroupNorm) === 0;
+            }
+        ));
+    }
+    $activeQuestions = [];
+    if ($expectedGroupNorm !== '') {
+        $activeQuestions = list_essay_questions($pdo, true, $expectedGroupNorm, 'order', 'asc');
+    }
+
+    if (empty($snapshotQuestions) && empty($activeQuestions)) {
+        return [];
+    }
+    if (empty($snapshotQuestions)) {
+        return $activeQuestions;
+    }
+    if (empty($activeQuestions)) {
+        return $snapshotQuestions;
+    }
+
+    $byOrder = [];
+    foreach ($snapshotQuestions as $q) {
+        $order = (int) ($q['order'] ?? 0);
+        if ($order <= 0) {
+            continue;
+        }
+        $byOrder[$order] = $q;
+    }
+
+    foreach ($activeQuestions as $q) {
+        $order = (int) ($q['order'] ?? 0);
+        if ($order <= 0 || isset($byOrder[$order])) {
+            continue;
+        }
+        $byOrder[$order] = $q;
+    }
+
+    if (!empty($byOrder)) {
+        ksort($byOrder);
+        return array_values($byOrder);
+    }
+
+    // Fallback for edge cases with invalid/missing order.
+    return !empty($snapshotQuestions) ? $snapshotQuestions : $activeQuestions;
+}
+
+function normalize_legacy_essay_data(PDO $pdo): array
+{
+    $roleRows = list_role_catalog($pdo, true);
+    $roleToGroup = [];
+    foreach ($roleRows as $row) {
+        $roleName = trim((string) ($row['role_name'] ?? ''));
+        $essayGroup = trim((string) ($row['essay_group'] ?? ''));
+        if ($roleName !== '' && $essayGroup !== '') {
+            $roleToGroup[$roleName] = $essayGroup;
+        }
+    }
+
+    $candidateRows = $pdo->query(
+        "SELECT DISTINCT c.id, c.full_name, c.selected_role
+         FROM candidates c
+         LEFT JOIN essay_answers ea ON ea.candidate_id = c.id
+         LEFT JOIN candidate_essay_questions ceq ON ceq.candidate_id = c.id
+         WHERE ea.id IS NOT NULL OR ceq.id IS NOT NULL
+         ORDER BY c.id ASC"
+    )->fetchAll();
+
+    $runId = gmdate('Ymd_His') . '_online_fix_' . substr(bin2hex(random_bytes(4)), 0, 8);
+    $now = now_iso();
+
+    $stats = [
+        'run_id' => $runId,
+        'scanned_candidates' => count($candidateRows),
+        'snapshot_fixed_candidates' => 0,
+        'answers_fixed_candidates' => 0,
+        'snapshot_backup_rows' => 0,
+        'answers_backup_rows' => 0,
+        'answers_inserted_rows' => 0,
+    ];
+
+    $pdo->beginTransaction();
+    try {
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS candidate_essay_questions_backup_group_fix (
+                backup_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id TEXT NOT NULL,
+                backed_up_at TEXT NOT NULL,
+                id INTEGER NOT NULL,
+                candidate_id INTEGER NOT NULL,
+                source_essay_question_id INTEGER,
+                role_group TEXT,
+                question_order INTEGER,
+                question_text TEXT,
+                guidance_text TEXT,
+                created_at TEXT
+            )'
+        );
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS essay_answers_backup_legacy_cleanup (
+                backup_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id TEXT NOT NULL,
+                backed_up_at TEXT NOT NULL,
+                original_id INTEGER,
+                candidate_id INTEGER NOT NULL,
+                essay_question_id INTEGER NOT NULL,
+                role_group_snapshot TEXT,
+                question_order_snapshot INTEGER,
+                question_text_snapshot TEXT,
+                answer_text TEXT,
+                created_at TEXT
+            )'
+        );
+
+        $selectSnapshot = $pdo->prepare(
+            'SELECT id, candidate_id, source_essay_question_id, role_group, question_order, question_text, guidance_text, created_at
+             FROM candidate_essay_questions
+             WHERE candidate_id = ?
+             ORDER BY question_order ASC, id ASC'
+        );
+        $selectAnswers = $pdo->prepare(
+            'SELECT id, candidate_id, essay_question_id, role_group_snapshot, question_order_snapshot, question_text_snapshot, answer_text, created_at
+             FROM essay_answers
+             WHERE candidate_id = ?
+             ORDER BY question_order_snapshot ASC, id ASC'
+        );
+        $insSnapshotBackup = $pdo->prepare(
+            'INSERT INTO candidate_essay_questions_backup_group_fix
+                (run_id, backed_up_at, id, candidate_id, source_essay_question_id, role_group, question_order, question_text, guidance_text, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        );
+        $updateSnapshotGroup = $pdo->prepare('UPDATE candidate_essay_questions SET role_group = ? WHERE id = ?');
+        $insAnswerBackup = $pdo->prepare(
+            'INSERT INTO essay_answers_backup_legacy_cleanup
+                (run_id, backed_up_at, original_id, candidate_id, essay_question_id, role_group_snapshot, question_order_snapshot, question_text_snapshot, answer_text, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        );
+        $deleteAnswers = $pdo->prepare('DELETE FROM essay_answers WHERE candidate_id = ?');
+        $insertAnswer = $pdo->prepare(
+            'INSERT INTO essay_answers
+                (candidate_id, essay_question_id, role_group_snapshot, question_order_snapshot, question_text_snapshot, answer_text, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)'
+        );
+
+        foreach ($candidateRows as $cand) {
+            $candidateId = (int) ($cand['id'] ?? 0);
+            if ($candidateId <= 0) {
+                continue;
+            }
+            $expectedGroup = $roleToGroup[(string) ($cand['selected_role'] ?? '')] ?? 'Floor';
+            $expectedGroupNorm = strtolower(trim($expectedGroup));
+
+            $selectSnapshot->execute([$candidateId]);
+            $snapshotRows = $selectSnapshot->fetchAll();
+            $snapshotByOrder = [];
+            $snapshotNeedsFix = false;
+
+            foreach ($snapshotRows as $row) {
+                $order = (int) ($row['question_order'] ?? 0);
+                if ($order > 0 && !isset($snapshotByOrder[$order])) {
+                    $snapshotByOrder[$order] = $row;
+                }
+                $group = trim((string) ($row['role_group'] ?? ''));
+                if ($group !== '' && strtolower($group) !== $expectedGroupNorm) {
+                    $snapshotNeedsFix = true;
+                }
+            }
+
+            if ($snapshotNeedsFix) {
+                foreach ($snapshotRows as $row) {
+                    $group = trim((string) ($row['role_group'] ?? ''));
+                    if ($group === '' || strtolower($group) === $expectedGroupNorm) {
+                        continue;
+                    }
+                    $insSnapshotBackup->execute([
+                        $runId,
+                        $now,
+                        (int) ($row['id'] ?? 0),
+                        $candidateId,
+                        (int) ($row['source_essay_question_id'] ?? 0),
+                        (string) ($row['role_group'] ?? ''),
+                        (int) ($row['question_order'] ?? 0),
+                        (string) ($row['question_text'] ?? ''),
+                        (string) ($row['guidance_text'] ?? ''),
+                        (string) ($row['created_at'] ?? ''),
+                    ]);
+                    $stats['snapshot_backup_rows']++;
+                    $updateSnapshotGroup->execute([$expectedGroup, (int) ($row['id'] ?? 0)]);
+                }
+                $stats['snapshot_fixed_candidates']++;
+            }
+
+            $selectAnswers->execute([$candidateId]);
+            $answerRows = $selectAnswers->fetchAll();
+            if (empty($answerRows) || empty($snapshotByOrder)) {
+                continue;
+            }
+
+            $byOrder = [];
+            $mismatchGroupCount = 0;
+            foreach ($answerRows as $row) {
+                $order = (int) ($row['question_order_snapshot'] ?? 0);
+                if ($order <= 0) {
+                    continue;
+                }
+                if (!isset($byOrder[$order])) {
+                    $byOrder[$order] = [];
+                }
+                $byOrder[$order][] = $row;
+                $group = trim((string) ($row['role_group_snapshot'] ?? ''));
+                if ($group !== '' && strtolower($group) !== $expectedGroupNorm) {
+                    $mismatchGroupCount++;
+                }
+            }
+
+            $needsAnswerFix = ($mismatchGroupCount > 0) || (count($answerRows) !== count($snapshotByOrder));
+            if (!$needsAnswerFix) {
+                continue;
+            }
+
+            foreach ($answerRows as $row) {
+                $insAnswerBackup->execute([
+                    $runId,
+                    $now,
+                    (int) ($row['id'] ?? 0),
+                    $candidateId,
+                    (int) ($row['essay_question_id'] ?? 0),
+                    (string) ($row['role_group_snapshot'] ?? ''),
+                    (int) ($row['question_order_snapshot'] ?? 0),
+                    (string) ($row['question_text_snapshot'] ?? ''),
+                    (string) ($row['answer_text'] ?? ''),
+                    (string) ($row['created_at'] ?? ''),
+                ]);
+                $stats['answers_backup_rows']++;
+            }
+
+            $deleteAnswers->execute([$candidateId]);
+
+            ksort($snapshotByOrder);
+            foreach ($snapshotByOrder as $order => $snap) {
+                $candidatesAtOrder = $byOrder[(int) $order] ?? [];
+                $selected = null;
+                $selectedScore = -1;
+                foreach ($candidatesAtOrder as $row) {
+                    $group = trim((string) ($row['role_group_snapshot'] ?? ''));
+                    $answer = trim((string) ($row['answer_text'] ?? ''));
+                    $groupScore = (strtolower($group) === $expectedGroupNorm) ? 200000 : 0;
+                    $score = $groupScore + strlen($answer);
+                    if ($score > $selectedScore) {
+                        $selectedScore = $score;
+                        $selected = $row;
+                    }
+                }
+
+                $sourceId = (int) ($snap['source_essay_question_id'] ?? 0);
+                $essayQuestionId = $sourceId > 0 ? $sourceId : (int) ($snap['id'] ?? 0);
+                $insertAnswer->execute([
+                    $candidateId,
+                    $essayQuestionId,
+                    $expectedGroup,
+                    (int) $order,
+                    (string) ($snap['question_text'] ?? ''),
+                    trim((string) ($selected['answer_text'] ?? '')),
+                    (string) ($selected['created_at'] ?? $now),
+                ]);
+                $stats['answers_inserted_rows']++;
+            }
+
+            $stats['answers_fixed_candidates']++;
+        }
+
+        $pdo->commit();
+        return $stats;
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        throw $e;
+    }
+}
+
+function preview_legacy_essay_data(PDO $pdo): array
+{
+    $roleRows = list_role_catalog($pdo, true);
+    $roleToGroup = [];
+    foreach ($roleRows as $row) {
+        $roleName = trim((string) ($row['role_name'] ?? ''));
+        $essayGroup = trim((string) ($row['essay_group'] ?? ''));
+        if ($roleName !== '' && $essayGroup !== '') {
+            $roleToGroup[$roleName] = $essayGroup;
+        }
+    }
+
+    $candidateRows = $pdo->query(
+        "SELECT DISTINCT c.id, c.selected_role
+         FROM candidates c
+         LEFT JOIN essay_answers ea ON ea.candidate_id = c.id
+         LEFT JOIN candidate_essay_questions ceq ON ceq.candidate_id = c.id
+         WHERE ea.id IS NOT NULL OR ceq.id IS NOT NULL
+         ORDER BY c.id ASC"
+    )->fetchAll();
+
+    $stats = [
+        'scanned_candidates' => count($candidateRows),
+        'snapshot_fixed_candidates' => 0,
+        'answers_fixed_candidates' => 0,
+        'snapshot_backup_rows' => 0,
+        'answers_backup_rows' => 0,
+        'answers_inserted_rows' => 0,
+    ];
+
+    $selectSnapshot = $pdo->prepare(
+        'SELECT id, role_group, question_order
+         FROM candidate_essay_questions
+         WHERE candidate_id = ?
+         ORDER BY question_order ASC, id ASC'
+    );
+    $selectAnswers = $pdo->prepare(
+        'SELECT id, role_group_snapshot, question_order_snapshot
+         FROM essay_answers
+         WHERE candidate_id = ?
+         ORDER BY question_order_snapshot ASC, id ASC'
+    );
+
+    foreach ($candidateRows as $cand) {
+        $candidateId = (int) ($cand['id'] ?? 0);
+        if ($candidateId <= 0) {
+            continue;
+        }
+        $expectedGroup = $roleToGroup[(string) ($cand['selected_role'] ?? '')] ?? 'Floor';
+        $expectedGroupNorm = strtolower(trim($expectedGroup));
+
+        $selectSnapshot->execute([$candidateId]);
+        $snapshotRows = $selectSnapshot->fetchAll();
+        $snapshotByOrder = [];
+        $snapshotNeedsFix = false;
+        foreach ($snapshotRows as $row) {
+            $order = (int) ($row['question_order'] ?? 0);
+            if ($order > 0 && !isset($snapshotByOrder[$order])) {
+                $snapshotByOrder[$order] = true;
+            }
+            $group = trim((string) ($row['role_group'] ?? ''));
+            if ($group !== '' && strtolower($group) !== $expectedGroupNorm) {
+                $snapshotNeedsFix = true;
+            }
+        }
+        if ($snapshotNeedsFix) {
+            $stats['snapshot_fixed_candidates']++;
+            $stats['snapshot_backup_rows'] += count($snapshotRows);
+        }
+
+        $selectAnswers->execute([$candidateId]);
+        $answerRows = $selectAnswers->fetchAll();
+        if (empty($answerRows) || empty($snapshotByOrder)) {
+            continue;
+        }
+        $mismatchGroupCount = 0;
+        foreach ($answerRows as $row) {
+            $group = trim((string) ($row['role_group_snapshot'] ?? ''));
+            if ($group !== '' && strtolower($group) !== $expectedGroupNorm) {
+                $mismatchGroupCount++;
+            }
+        }
+        $needsAnswerFix = ($mismatchGroupCount > 0) || (count($answerRows) !== count($snapshotByOrder));
+        if ($needsAnswerFix) {
+            $stats['answers_fixed_candidates']++;
+            $stats['answers_backup_rows'] += count($answerRows);
+            $stats['answers_inserted_rows'] += count($snapshotByOrder);
+        }
+    }
+
+    return $stats;
 }
 
 function normalize_typing_rows(array $rows, ?string $expectedGroup = null): array
@@ -868,6 +1408,38 @@ function expire_overdue_candidates(PDO $pdo, array $config): int
     $minRatio = (float) ($config['min_completion_ratio'] ?? 0.8);
 
     foreach ($overdueCandidates as $candidate) {
+        if (empty($candidate['disc_completed_at'])) {
+            $discDeadlineAt = (string) ($candidate['deadline_at'] ?? now_iso());
+            $discTs = strtotime($discDeadlineAt);
+            if ($discTs === false) {
+                $discTs = time();
+                $discDeadlineAt = gmdate('c', $discTs);
+            }
+
+            $essayDurationMinutes = max(1, (int) ($config['essay_duration_minutes'] ?? 15));
+            $essayDeadlineAt = gmdate('c', $discTs + ($essayDurationMinutes * 60));
+            $candidateId = (int) ($candidate['id'] ?? 0);
+            if ($candidateId > 0) {
+                mark_disc_completed($pdo, $candidateId, $discDeadlineAt, $essayDeadlineAt);
+                $group = essay_group_by_selected_role($pdo, (string) ($candidate['selected_role'] ?? ''));
+                $essayQuestions = list_essay_questions($pdo, false, $group);
+                $essaySnapshotRows = ensure_candidate_essay_question_snapshot($pdo, $candidateId, $essayQuestions);
+                log_candidate_journey_event($pdo, $candidateId, 'disc', 'auto_timeout_submit', 'disc', [
+                    'draft_count' => count(parse_draft_answers_from_candidate($candidate)),
+                    'question_count' => count(list_questions($pdo, false, null)),
+                    'essay_deadline_at' => $essayDeadlineAt,
+                    'source' => 'timeout_sweep',
+                ]);
+                log_candidate_journey_event($pdo, $candidateId, 'essay', 'essay_snapshot_created', $group, [
+                    'group' => $group,
+                    'question_count' => count($essaySnapshotRows),
+                    'source' => 'timeout_sweep',
+                ]);
+                log_integrity_event($pdo, $candidateId, 'disc', 'phase_complete_timeout', 'disc_to_essay');
+            }
+            continue;
+        }
+
         $draftAnswers = parse_draft_answers_from_candidate($candidate);
         $totalQuestions = count(list_questions($pdo, false, null));
         $answeredCount = count($draftAnswers);
@@ -880,10 +1452,24 @@ function expire_overdue_candidates(PDO $pdo, array $config): int
         $phaseDeadline = (string) ($candidate['deadline_at'] ?? now_iso());
         if (!empty($candidate['disc_completed_at']) && !empty($candidate['essay_deadline_at'])) {
             $phaseDeadline = (string) $candidate['essay_deadline_at'];
-            $draftEssay = parse_draft_essay_answers_from_candidate($candidate);
+            $group = essay_group_by_selected_role($pdo, (string) ($candidate['selected_role'] ?? ''));
+            $essayQuestions = ensure_candidate_essay_question_snapshot(
+                $pdo,
+                (int) $candidate['id'],
+                list_essay_questions($pdo, false, $group)
+            );
+            $draftEssay = remap_draft_essay_answers_to_snapshot(
+                parse_draft_essay_answers_from_candidate($candidate),
+                $essayQuestions
+            );
             if (!empty($draftEssay)) {
                 save_essay_answers($pdo, (int) $candidate['id'], $draftEssay);
             }
+            log_candidate_journey_event($pdo, (int) $candidate['id'], 'essay', 'auto_timeout_submit', $group, [
+                'source' => 'timeout_sweep',
+                'draft_essay_count' => count($draftEssay),
+                'snapshot_question_count' => count($essayQuestions),
+            ]);
         }
 
         $saved = save_submission($pdo, [
@@ -1184,14 +1770,17 @@ if ($method === 'POST' && $path === '/progress-save') {
 
     $questions = list_questions($pdo, false, null);
     $answers = build_answers_from_payload($_POST, $questions);
-    update_candidate_draft_answers($pdo, (int) $candidate['id'], $answers);
+    $savedAt = now_iso();
+    update_candidate_draft_answers($pdo, (int) $candidate['id'], $answers, $savedAt);
     log_candidate_journey_event($pdo, (int) $candidate['id'], 'disc', 'disc_autosave', 'disc', [
         'saved_count' => count($answers),
+        'last_autosave_at' => $savedAt,
     ]);
 
     json_response([
         'ok' => true,
         'saved_count' => count($answers),
+        'last_autosave_at' => $savedAt,
     ]);
 }
 
@@ -1402,12 +1991,24 @@ if ($method === 'POST' && $path === '/essay-progress-save') {
     );
     $essayAnswers = build_essay_answers_from_payload($_POST, $essayQuestions);
     $essayAnswers = remap_draft_essay_answers_to_snapshot($essayAnswers, $essayQuestions);
-    update_candidate_draft_essay_answers($pdo, (int) $candidate['id'], $essayAnswers);
+    $savedAt = now_iso();
+    $filledCount = count_filled_essay_answers($essayAnswers);
+    $totalCount = count($essayQuestions);
+    update_candidate_draft_essay_answers($pdo, (int) $candidate['id'], $essayAnswers, $savedAt);
     log_candidate_journey_event($pdo, (int) $candidate['id'], 'essay', 'essay_autosave', $group, [
         'group' => $group,
-        'saved_count' => count($essayAnswers),
+        'saved_count' => $filledCount,
+        'filled_count' => $filledCount,
+        'total_count' => $totalCount,
+        'last_autosave_at' => $savedAt,
     ]);
-    json_response(['ok' => true, 'saved_count' => count($essayAnswers)]);
+    json_response([
+        'ok' => true,
+        'saved_count' => $filledCount,
+        'filled_count' => $filledCount,
+        'total_count' => $totalCount,
+        'last_autosave_at' => $savedAt,
+    ]);
 }
 
 if ($method === 'POST' && $path === '/typing-metrics-save') {
@@ -1497,11 +2098,14 @@ if ($method === 'POST' && ($path === '/essay-submit' || $path === '/submit')) {
         'group' => $group,
         'posted_count' => count($postedEssay),
         'draft_count' => count($draftEssay),
+        'posted_filled' => count_filled_essay_answers($postedEssay),
+        'draft_filled' => count_filled_essay_answers($draftEssay),
+        'question_total' => count($essayQuestions),
         'expired' => $expired,
     ]);
     if (!$expired && count_filled_essay_answers($essayAnswers) < count($essayQuestions)) {
         // Keep latest posted draft for recovery, but manual submit must be complete from current form.
-        update_candidate_draft_essay_answers($pdo, (int) $candidate['id'], array_merge($draftEssay, $postedEssay));
+        update_candidate_draft_essay_answers($pdo, (int) $candidate['id'], merge_essay_answers_with_fallback($postedEssay, $draftEssay));
         render('candidate/essay-test', [
             'page_title' => 'Tes Esai',
             'candidate' => $candidate,
@@ -1516,7 +2120,7 @@ if ($method === 'POST' && ($path === '/essay-submit' || $path === '/submit')) {
 
     if ($expired) {
         // Timeout fallback can still use latest autosave + posted payload.
-        $essayAnswers = array_merge($draftEssay, $postedEssay);
+        $essayAnswers = merge_essay_answers_with_fallback($postedEssay, $draftEssay);
     }
 
     if (count_filled_essay_answers($essayAnswers) > 0) {
@@ -1635,6 +2239,9 @@ if ($method === 'POST' && $path === '/hr/logout') {
 
 if ($method === 'GET' && $path === '/hr/dashboard') {
     require_hr_auth($config);
+    $flashMessage = $_SESSION['dashboard_flash_message'] ?? null;
+    $flashType = $_SESSION['dashboard_flash_type'] ?? 'info';
+    unset($_SESSION['dashboard_flash_message'], $_SESSION['dashboard_flash_type']);
 
     $filters = [
         'search' => trim((string) ($_GET['search'] ?? '')),
@@ -1664,6 +2271,8 @@ if ($method === 'GET' && $path === '/hr/dashboard') {
         'recommendation_options' => recommendation_options(),
         'candidates' => $candidates,
         'stats' => $stats,
+        'flash_message' => is_string($flashMessage) ? $flashMessage : null,
+        'flash_type' => is_string($flashType) ? $flashType : 'info',
         'pagination' => [
             'page' => $page,
             'per_page' => $perPage,
@@ -1674,6 +2283,48 @@ if ($method === 'GET' && $path === '/hr/dashboard') {
         ],
     ]);
     exit;
+}
+
+if ($method === 'POST' && $path === '/hr/tools/normalize-legacy-essay') {
+    require_hr_auth($config);
+    try {
+        $result = normalize_legacy_essay_data($pdo);
+        $_SESSION['dashboard_flash_message'] =
+            'Perbaikan data lama selesai. ' .
+            'scan=' . (int) ($result['scanned_candidates'] ?? 0) .
+            ', snapshot_fix=' . (int) ($result['snapshot_fixed_candidates'] ?? 0) .
+            ', answers_fix=' . (int) ($result['answers_fixed_candidates'] ?? 0) .
+            ', backup_snapshot=' . (int) ($result['snapshot_backup_rows'] ?? 0) .
+            ', backup_answers=' . (int) ($result['answers_backup_rows'] ?? 0) .
+            ', inserted_answers=' . (int) ($result['answers_inserted_rows'] ?? 0) .
+            ', run_id=' . (string) ($result['run_id'] ?? '-');
+        $_SESSION['dashboard_flash_type'] = 'success';
+    } catch (Throwable $e) {
+        $_SESSION['dashboard_flash_message'] = 'Perbaikan data lama gagal: ' . $e->getMessage();
+        $_SESSION['dashboard_flash_type'] = 'error';
+    }
+    redirect(route_path('/hr/dashboard'));
+}
+
+if ($method === 'POST' && $path === '/hr/tools/normalize-legacy-essay-preview') {
+    require_hr_auth($config);
+    try {
+        $result = preview_legacy_essay_data($pdo);
+        $_SESSION['dashboard_flash_message'] =
+            'Preview perbaikan data lama. ' .
+            'scan=' . (int) ($result['scanned_candidates'] ?? 0) .
+            ', snapshot_fix=' . (int) ($result['snapshot_fixed_candidates'] ?? 0) .
+            ', answers_fix=' . (int) ($result['answers_fixed_candidates'] ?? 0) .
+            ', backup_snapshot=' . (int) ($result['snapshot_backup_rows'] ?? 0) .
+            ', backup_answers=' . (int) ($result['answers_backup_rows'] ?? 0) .
+            ', inserted_answers=' . (int) ($result['answers_inserted_rows'] ?? 0) .
+            '. Belum ada perubahan data.';
+        $_SESSION['dashboard_flash_type'] = 'success';
+    } catch (Throwable $e) {
+        $_SESSION['dashboard_flash_message'] = 'Preview perbaikan gagal: ' . $e->getMessage();
+        $_SESSION['dashboard_flash_type'] = 'error';
+    }
+    redirect(route_path('/hr/dashboard'));
 }
 
 if ($method === 'GET' && $path === '/hr/master-data') {
@@ -2018,18 +2669,31 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)$#', $path, $m)) {
 
     $answers = get_answers_for_candidate($pdo, (int) $candidate['id']);
     $questionRows = parse_candidate_profile_answers($answers);
+    $discTotalCount = count(list_questions($pdo, false, null));
+    $discAnsweredCount = 0;
+    foreach ($answers as $row) {
+        $mostCode = trim((string) ($row['most_code'] ?? ''));
+        $leastCode = trim((string) ($row['least_code'] ?? ''));
+        if ($mostCode !== '' && $leastCode !== '' && $mostCode !== $leastCode) {
+            $discAnsweredCount++;
+        }
+    }
     $expectedEssayGroup = essay_group_by_selected_role($pdo, (string) ($candidate['selected_role'] ?? ''));
     $includeUnansweredEssay = true;
-    $expectedEssayQuestions = list_candidate_essay_questions($pdo, (int) $candidate['id']);
-    if (empty($expectedEssayQuestions)) {
-        $expectedEssayQuestions = list_essay_questions($pdo, true, $expectedEssayGroup, 'order', 'asc');
-    }
+    $expectedEssayQuestions = build_expected_essay_questions_for_display($pdo, (int) $candidate['id'], $expectedEssayGroup);
     $essayRows = normalize_essay_profile_rows(
         get_essay_answer_details_for_candidate($pdo, (int) $candidate['id']),
         $expectedEssayGroup,
         $expectedEssayQuestions,
         $includeUnansweredEssay
     );
+    $essayAnsweredCount = 0;
+    $essayTotalCount = count($essayRows);
+    foreach ($essayRows as $row) {
+        if (trim((string) ($row['answer_text'] ?? '')) !== '') {
+            $essayAnsweredCount++;
+        }
+    }
     $integrityEvents = list_integrity_events($pdo, (int) $candidate['id'], 250);
     $integrityEventsDisplay = array_map(static function (array $ev): array {
         $phase = (string) ($ev['phase'] ?? '');
@@ -2046,18 +2710,7 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)$#', $path, $m)) {
         if (is_string($ev['payload_json'] ?? null) && trim((string) $ev['payload_json']) !== '') {
             $decoded = json_decode((string) $ev['payload_json'], true);
             if (is_array($decoded)) {
-                $parts = [];
-                foreach ($decoded as $k => $v) {
-                    if (is_array($v)) {
-                        $v = implode(',', array_map('strval', $v));
-                    } elseif (is_bool($v)) {
-                        $v = $v ? 'true' : 'false';
-                    }
-                    $parts[] = (string) $k . '=' . (string) $v;
-                }
-                if (!empty($parts)) {
-                    $payloadText = implode(' | ', $parts);
-                }
+                $payloadText = format_journey_payload_text((string) ($ev['event_key'] ?? ''), $decoded);
             }
         }
         $ev['phase_label'] = integrity_phase_label((string) ($ev['phase'] ?? ''));
@@ -2094,6 +2747,8 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)$#', $path, $m)) {
     $interviewRecommendation = interview_recommendation_label($candidate, $roleScoreData);
     $integrityRisk = integrity_risk_from_candidate($candidate);
     $typingRisk = typing_risk_from_rows($typingMetricsRows);
+    $focusLossSeverity = focus_loss_severity_from_events($integrityEvents, $candidate);
+    $latencyPasteAnomaly = latency_paste_anomaly_from_rows($typingMetricsRows);
 
     $checklistRow = get_interview_checklist($pdo, (int) $candidate['id']);
     $savedChecklist = [];
@@ -2111,7 +2766,11 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)$#', $path, $m)) {
         'page_title' => 'Profil Kandidat #' . $candidate['id'],
         'candidate' => $candidate,
         'question_rows' => $questionRows,
+        'disc_answered_count' => $discAnsweredCount,
+        'disc_total_count' => $discTotalCount,
         'essay_rows' => $essayRows,
+        'essay_answered_count' => $essayAnsweredCount,
+        'essay_total_count' => $essayTotalCount,
         'integrity_events' => $integrityEventsDisplay,
         'journey_events' => $journeyEvents,
         'typing_metrics_rows' => $typingMetricsRows,
@@ -2126,6 +2785,8 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)$#', $path, $m)) {
         'interview_recommendation' => $interviewRecommendation,
         'integrity_risk' => $integrityRisk,
         'typing_risk' => $typingRisk,
+        'focus_loss_severity' => $focusLossSeverity,
+        'latency_paste_anomaly' => $latencyPasteAnomaly,
         'interview_sections' => interview_checklist_sections(),
         'interview_saved_checklist' => $savedChecklist,
         'interview_saved_final_decision' => (string) ($checklistRow['final_decision'] ?? ''),
@@ -2150,18 +2811,31 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)/export/answers\.csv$
     }
 
     $rows = get_answer_details_for_candidate_export($pdo, $candidateId);
+    $discTotalCount = count(list_questions($pdo, false, null));
+    $discAnsweredCount = 0;
+    foreach ($rows as $row) {
+        $mostCode = trim((string) ($row['most_code'] ?? ''));
+        $leastCode = trim((string) ($row['least_code'] ?? ''));
+        if ($mostCode !== '' && $leastCode !== '' && $mostCode !== $leastCode) {
+            $discAnsweredCount++;
+        }
+    }
     $expectedEssayGroup = essay_group_by_selected_role($pdo, (string) ($candidate['selected_role'] ?? ''));
     $includeUnansweredEssay = true;
-    $expectedEssayQuestions = list_candidate_essay_questions($pdo, (int) $candidate['id']);
-    if (empty($expectedEssayQuestions)) {
-        $expectedEssayQuestions = list_essay_questions($pdo, true, $expectedEssayGroup, 'order', 'asc');
-    }
+    $expectedEssayQuestions = build_expected_essay_questions_for_display($pdo, (int) $candidate['id'], $expectedEssayGroup);
     $essayRows = normalize_essay_profile_rows(
         get_essay_answer_details_for_candidate($pdo, $candidateId),
         $expectedEssayGroup,
         $expectedEssayQuestions,
         $includeUnansweredEssay
     );
+    $essayAnsweredCount = 0;
+    $essayTotalCount = count($essayRows);
+    foreach ($essayRows as $row) {
+        if (trim((string) ($row['answer_text'] ?? '')) !== '') {
+            $essayAnsweredCount++;
+        }
+    }
     $typingRows = normalize_typing_rows(get_essay_typing_metrics_for_candidate($pdo, $candidateId), $expectedEssayGroup);
     $integrityEventsRaw = list_integrity_events($pdo, $candidateId, 300);
     $integrityEvents = array_map(static function (array $ev): array {
@@ -2179,18 +2853,7 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)/export/answers\.csv$
         if (is_string($ev['payload_json'] ?? null) && trim((string) $ev['payload_json']) !== '') {
             $decoded = json_decode((string) $ev['payload_json'], true);
             if (is_array($decoded)) {
-                $parts = [];
-                foreach ($decoded as $k => $v) {
-                    if (is_array($v)) {
-                        $v = implode(',', array_map('strval', $v));
-                    } elseif (is_bool($v)) {
-                        $v = $v ? 'true' : 'false';
-                    }
-                    $parts[] = (string) $k . '=' . (string) $v;
-                }
-                if (!empty($parts)) {
-                    $payloadText = implode(' | ', $parts);
-                }
+                $payloadText = format_journey_payload_text((string) ($ev['event_key'] ?? ''), $decoded);
             }
         }
         return [
@@ -2205,6 +2868,8 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)/export/answers\.csv$
     $interviewRecommendation = interview_recommendation_label($candidate, $roleScores);
     $integrityRisk = integrity_risk_from_candidate($candidate);
     $typingRisk = typing_risk_from_rows($typingRows);
+    $focusLossSeverity = focus_loss_severity_from_events($integrityEventsRaw, $candidate);
+    $latencyPasteAnomaly = latency_paste_anomaly_from_rows($typingRows);
     $checklistRow = get_interview_checklist($pdo, $candidateId);
 
     $checkedItems = [];
@@ -2229,7 +2894,7 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)/export/answers\.csv$
     fputcsv($out, [
         'Candidate ID', 'Nama', 'Email', 'WA', 'Role Dipilih', 'Rekomendasi Sistem', 'Kelayakan Wawancara',
         'Status', 'Mulai', 'Selesai', 'Durasi (detik)', 'DISC D', 'DISC I', 'DISC S', 'DISC C',
-        'Integrity Risk', 'Typing Risk', 'Final Keputusan HR',
+        'Jawaban DISC Terisi', 'Jawaban Esai Terisi', 'Integrity Risk', 'Typing Risk', 'Focus-loss Severity', 'Latency+Paste Anomaly', 'Final Keputusan HR',
     ]);
     fputcsv($out, [
         (int) ($candidate['id'] ?? 0),
@@ -2247,8 +2912,12 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)/export/answers\.csv$
         (int) ($candidate['disc_i'] ?? 0),
         (int) ($candidate['disc_s'] ?? 0),
         (int) ($candidate['disc_c'] ?? 0),
+        $discAnsweredCount . '/' . $discTotalCount,
+        $essayAnsweredCount . '/' . $essayTotalCount,
         (string) ($integrityRisk['level'] ?? 'Low') . ' (tab=' . (int) ($integrityRisk['tab_switches'] ?? 0) . ', paste=' . (int) ($integrityRisk['paste_count'] ?? 0) . ')',
         (string) ($typingRisk['level'] ?? 'Low') . ' (score=' . (int) ($typingRisk['score'] ?? 0) . ')',
+        (string) ($focusLossSeverity['level'] ?? 'Low') . ' (score=' . (int) ($focusLossSeverity['score'] ?? 0) . ', tab=' . (int) ($focusLossSeverity['tab_switches'] ?? 0) . ')',
+        (string) ($latencyPasteAnomaly['level'] ?? 'Low') . ' (score=' . (int) ($latencyPasteAnomaly['score'] ?? 0) . ', flagged=' . (int) ($latencyPasteAnomaly['flagged_rows'] ?? 0) . ')',
         (string) ($checklistRow['final_decision'] ?? '-'),
     ]);
 
@@ -2348,10 +3017,11 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)/export/answers\.csv$
     exit;
 }
 
-if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)/export/answers\.pdf$#', $path, $m)) {
+if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)/export/answers\.(pdf|doc)$#', $path, $m)) {
     require_hr_auth($config);
 
     $candidateId = (int) $m[1];
+    $exportFormat = strtolower((string) ($m[2] ?? 'pdf'));
     $candidate = get_candidate_by_id($pdo, $candidateId);
     if (!$candidate) {
         http_response_code(404);
@@ -2360,18 +3030,31 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)/export/answers\.pdf$
     }
 
     $rows = get_answer_details_for_candidate_export($pdo, $candidateId);
+    $discTotalCount = count(list_questions($pdo, false, null));
+    $discAnsweredCount = 0;
+    foreach ($rows as $row) {
+        $mostCode = trim((string) ($row['most_code'] ?? ''));
+        $leastCode = trim((string) ($row['least_code'] ?? ''));
+        if ($mostCode !== '' && $leastCode !== '' && $mostCode !== $leastCode) {
+            $discAnsweredCount++;
+        }
+    }
     $expectedEssayGroup = essay_group_by_selected_role($pdo, (string) ($candidate['selected_role'] ?? ''));
     $includeUnansweredEssay = true;
-    $expectedEssayQuestions = list_candidate_essay_questions($pdo, (int) $candidate['id']);
-    if (empty($expectedEssayQuestions)) {
-        $expectedEssayQuestions = list_essay_questions($pdo, true, $expectedEssayGroup, 'order', 'asc');
-    }
+    $expectedEssayQuestions = build_expected_essay_questions_for_display($pdo, (int) $candidate['id'], $expectedEssayGroup);
     $essayRows = normalize_essay_profile_rows(
         get_essay_answer_details_for_candidate($pdo, $candidateId),
         $expectedEssayGroup,
         $expectedEssayQuestions,
         $includeUnansweredEssay
     );
+    $essayAnsweredCount = 0;
+    $essayTotalCount = count($essayRows);
+    foreach ($essayRows as $row) {
+        if (trim((string) ($row['answer_text'] ?? '')) !== '') {
+            $essayAnsweredCount++;
+        }
+    }
     $typingRows = normalize_typing_rows(get_essay_typing_metrics_for_candidate($pdo, $candidateId), $expectedEssayGroup);
     $integrityEventsRaw = list_integrity_events($pdo, $candidateId, 300);
     $integrityEvents = array_map(static function (array $ev): array {
@@ -2389,18 +3072,7 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)/export/answers\.pdf$
         if (is_string($ev['payload_json'] ?? null) && trim((string) $ev['payload_json']) !== '') {
             $decoded = json_decode((string) $ev['payload_json'], true);
             if (is_array($decoded)) {
-                $parts = [];
-                foreach ($decoded as $k => $v) {
-                    if (is_array($v)) {
-                        $v = implode(',', array_map('strval', $v));
-                    } elseif (is_bool($v)) {
-                        $v = $v ? 'true' : 'false';
-                    }
-                    $parts[] = (string) $k . '=' . (string) $v;
-                }
-                if (!empty($parts)) {
-                    $payloadText = implode(' | ', $parts);
-                }
+                $payloadText = format_journey_payload_text((string) ($ev['event_key'] ?? ''), $decoded);
             }
         }
         return [
@@ -2415,6 +3087,8 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)/export/answers\.pdf$
     $interviewRecommendation = interview_recommendation_label($candidate, $roleScores);
     $integrityRisk = integrity_risk_from_candidate($candidate);
     $typingRisk = typing_risk_from_rows($typingRows);
+    $focusLossSeverity = focus_loss_severity_from_events($integrityEventsRaw, $candidate);
+    $latencyPasteAnomaly = latency_paste_anomaly_from_rows($typingRows);
     $checklistRow = get_interview_checklist($pdo, $candidateId);
     $checkedItems = [];
     if ($checklistRow && is_string($checklistRow['checklist_json'] ?? null)) {
@@ -2430,7 +3104,12 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)/export/answers\.pdf$
         }
     }
 
-    header('Content-Type: text/html; charset=utf-8');
+    if ($exportFormat === 'doc') {
+        header('Content-Type: application/msword; charset=utf-8');
+        header('Content-Disposition: attachment; filename="candidate-answers-' . $candidateId . '-' . time() . '.doc"');
+    } else {
+        header('Content-Type: text/html; charset=utf-8');
+    }
     echo '<!doctype html><html><head><meta charset="utf-8"><title>Jawaban Kandidat #' . h((string) $candidateId) . '</title><style>body{font-family:Arial,sans-serif;padding:20px;}h2{margin:0 0 6px;}h3{margin:18px 0 8px;}p{margin:4px 0 12px;}table{border-collapse:collapse;width:100%;font-size:12px;margin-bottom:10px}th,td{border:1px solid #ddd;padding:6px;vertical-align:top;text-align:left;}th{background:#f2f2f2}</style></head><body>';
     echo '<h2>Jawaban Kandidat #' . h((string) $candidateId) . '</h2>';
     echo '<p><strong>Nama:</strong> ' . h((string) ($candidate['full_name'] ?? '-')) . '<br>';
@@ -2438,10 +3117,18 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)/export/answers\.pdf$
     echo '<strong>Role Dipilih:</strong> ' . h((string) ($candidate['selected_role'] ?? '-')) . '<br>';
     echo '<strong>Rekomendasi:</strong> ' . h(map_recommendation_label($candidate['recommendation'] ?? null)) . '<br>';
     echo '<strong>Kelayakan Wawancara:</strong> ' . h($interviewRecommendation) . '<br>';
+    echo '<strong>Jawaban DISC Terisi:</strong> ' . h((string) $discAnsweredCount) . '/' . h((string) $discTotalCount) . '<br>';
+    echo '<strong>Jawaban Esai Terisi:</strong> ' . h((string) $essayAnsweredCount) . '/' . h((string) $essayTotalCount) . '<br>';
     echo '<strong>Status:</strong> ' . h((string) ($candidate['status'] ?? '-')) . '<br>';
     echo '<strong>Integrity Risk:</strong> ' . h((string) ($integrityRisk['level'] ?? 'Low')) . ' (tab=' . h((string) ((int) ($integrityRisk['tab_switches'] ?? 0))) . ', paste=' . h((string) ((int) ($integrityRisk['paste_count'] ?? 0))) . ')<br>';
     echo '<strong>Typing Risk:</strong> ' . h((string) ($typingRisk['level'] ?? 'Low')) . ' (score=' . h((string) ((int) ($typingRisk['score'] ?? 0))) . ')</p>';
-    echo '<p>Gunakan menu browser: Print -> Save as PDF.</p>';
+    echo '<p><strong>Focus-loss Severity:</strong> ' . h((string) ($focusLossSeverity['level'] ?? 'Low')) . ' (score=' . h((string) ((int) ($focusLossSeverity['score'] ?? 0))) . ', tab=' . h((string) ((int) ($focusLossSeverity['tab_switches'] ?? 0))) . ', per10m=' . h((string) ($focusLossSeverity['switch_per_10min'] ?? 0)) . ')<br>';
+    echo '<strong>Latency+Paste Anomaly:</strong> ' . h((string) ($latencyPasteAnomaly['level'] ?? 'Low')) . ' (score=' . h((string) ((int) ($latencyPasteAnomaly['score'] ?? 0))) . ', flagged=' . h((string) ((int) ($latencyPasteAnomaly['flagged_rows'] ?? 0))) . ')</p>';
+    if ($exportFormat === 'pdf') {
+        echo '<p>Gunakan menu browser: Print -> Save as PDF.</p>';
+    } else {
+        echo '<p>Dokumen ini bisa langsung dibuka di Microsoft Word.</p>';
+    }
 
     echo '<h3>Jawaban DISC</h3>';
     echo '<table><thead><tr><th>No</th><th>Role Soal</th><th>Most</th><th>Least</th><th>Mapping DISC</th></tr></thead><tbody>';
@@ -2659,6 +3346,38 @@ if ($method === 'POST' && $path === '/hr/essay-questions/new') {
 if ($method === 'GET' && preg_match('#^/hr/essay-questions/(\d+)/edit$#', $path, $m)) {
     require_hr_auth($config);
     $essayGroupOptions = load_essay_group_options($pdo);
+    $returnQueryParams = [];
+    if (array_key_exists('group', $_GET)) {
+        $group = trim((string) ($_GET['group'] ?? ''));
+        if ($group !== '' && in_array($group, $essayGroupOptions, true)) {
+            $returnQueryParams['group'] = $group;
+        }
+    }
+    if (array_key_exists('sort_by', $_GET)) {
+        $sortBy = normalize_essay_sort_by($_GET['sort_by'] ?? 'default');
+        if ($sortBy !== 'default') {
+            $returnQueryParams['sort_by'] = $sortBy;
+        }
+    }
+    if (array_key_exists('sort_dir', $_GET)) {
+        $sortDir = normalize_sort_dir($_GET['sort_dir'] ?? 'asc');
+        if ($sortDir !== 'asc') {
+            $returnQueryParams['sort_dir'] = $sortDir;
+        }
+    }
+    if (array_key_exists('per_page', $_GET)) {
+        $perPage = normalize_per_page_param($_GET['per_page'] ?? 20);
+        if ($perPage !== 20) {
+            $returnQueryParams['per_page'] = $perPage;
+        }
+    }
+    if (array_key_exists('page', $_GET)) {
+        $page = normalize_page_param($_GET['page'] ?? 1);
+        if ($page > 1) {
+            $returnQueryParams['page'] = $page;
+        }
+    }
+    $returnQuery = http_build_query($returnQueryParams);
 
     $row = get_essay_question_by_id($pdo, (int) $m[1]);
     if (!$row) {
@@ -2675,6 +3394,7 @@ if ($method === 'GET' && preg_match('#^/hr/essay-questions/(\d+)/edit$#', $path,
         'essay_group_options' => $essayGroupOptions,
         'auto_order_enabled' => false,
         'next_order_map' => [],
+        'return_query' => $returnQuery,
         'values' => [
             'role_group' => (string) ($row['role_group'] ?? 'Manager'),
             'order' => (int) ($row['question_order'] ?? 0),
@@ -2689,6 +3409,43 @@ if ($method === 'GET' && preg_match('#^/hr/essay-questions/(\d+)/edit$#', $path,
 if ($method === 'POST' && preg_match('#^/hr/essay-questions/(\d+)/edit$#', $path, $m)) {
     require_hr_auth($config);
     $essayGroupOptions = load_essay_group_options($pdo);
+    $returnQueryRaw = trim((string) ($_POST['return_query'] ?? ''));
+    $returnQueryParams = [];
+    if ($returnQueryRaw !== '') {
+        $parsed = [];
+        parse_str($returnQueryRaw, $parsed);
+        if (is_array($parsed)) {
+            $group = trim((string) ($parsed['group'] ?? ''));
+            if ($group !== '' && in_array($group, $essayGroupOptions, true)) {
+                $returnQueryParams['group'] = $group;
+            }
+            if (array_key_exists('sort_by', $parsed)) {
+                $sortBy = normalize_essay_sort_by($parsed['sort_by'] ?? 'default');
+                if ($sortBy !== 'default') {
+                    $returnQueryParams['sort_by'] = $sortBy;
+                }
+            }
+            if (array_key_exists('sort_dir', $parsed)) {
+                $sortDir = normalize_sort_dir($parsed['sort_dir'] ?? 'asc');
+                if ($sortDir !== 'asc') {
+                    $returnQueryParams['sort_dir'] = $sortDir;
+                }
+            }
+            if (array_key_exists('per_page', $parsed)) {
+                $perPage = normalize_per_page_param($parsed['per_page'] ?? 20);
+                if ($perPage !== 20) {
+                    $returnQueryParams['per_page'] = $perPage;
+                }
+            }
+            if (array_key_exists('page', $parsed)) {
+                $page = normalize_page_param($parsed['page'] ?? 1);
+                if ($page > 1) {
+                    $returnQueryParams['page'] = $page;
+                }
+            }
+        }
+    }
+    $returnQuery = http_build_query($returnQueryParams);
 
     $payload = [
         'role_group' => trim((string) ($_POST['role_group'] ?? '')),
@@ -2710,6 +3467,7 @@ if ($method === 'POST' && preg_match('#^/hr/essay-questions/(\d+)/edit$#', $path
             'essay_group_options' => $essayGroupOptions,
             'auto_order_enabled' => false,
             'next_order_map' => [],
+            'return_query' => $returnQuery,
             'values' => $payload,
             'error_message' => 'Kelompok role wajib valid, urutan > 0, dan pertanyaan minimal 10 karakter.',
         ]);
@@ -2719,38 +3477,175 @@ if ($method === 'POST' && preg_match('#^/hr/essay-questions/(\d+)/edit$#', $path
     update_essay_question($pdo, (int) $m[1], $payload);
     $_SESSION['essay_questions_flash_message'] = 'Soal esai berhasil diperbarui.';
     $_SESSION['essay_questions_flash_type'] = 'success';
-    redirect(route_path('/hr/essay-questions'));
+    $redirectPath = '/hr/essay-questions';
+    if ($returnQuery !== '') {
+        $redirectPath .= '?' . $returnQuery;
+    }
+    redirect(route_path($redirectPath));
 }
 
 if ($method === 'POST' && preg_match('#^/hr/essay-questions/(\d+)/toggle-active$#', $path, $m)) {
     require_hr_auth($config);
+    $essayGroupOptions = load_essay_group_options($pdo);
+    $returnQueryRaw = trim((string) ($_POST['return_query'] ?? ''));
+    $returnQueryParams = [];
+    if ($returnQueryRaw !== '') {
+        $parsed = [];
+        parse_str($returnQueryRaw, $parsed);
+        if (is_array($parsed)) {
+            $group = trim((string) ($parsed['group'] ?? ''));
+            if ($group !== '' && in_array($group, $essayGroupOptions, true)) {
+                $returnQueryParams['group'] = $group;
+            }
+            if (array_key_exists('sort_by', $parsed)) {
+                $sortBy = normalize_essay_sort_by($parsed['sort_by'] ?? 'default');
+                if ($sortBy !== 'default') {
+                    $returnQueryParams['sort_by'] = $sortBy;
+                }
+            }
+            if (array_key_exists('sort_dir', $parsed)) {
+                $sortDir = normalize_sort_dir($parsed['sort_dir'] ?? 'asc');
+                if ($sortDir !== 'asc') {
+                    $returnQueryParams['sort_dir'] = $sortDir;
+                }
+            }
+            if (array_key_exists('per_page', $parsed)) {
+                $perPage = normalize_per_page_param($parsed['per_page'] ?? 20);
+                if ($perPage !== 20) {
+                    $returnQueryParams['per_page'] = $perPage;
+                }
+            }
+            if (array_key_exists('page', $parsed)) {
+                $page = normalize_page_param($parsed['page'] ?? 1);
+                if ($page > 1) {
+                    $returnQueryParams['page'] = $page;
+                }
+            }
+        }
+    }
+    $returnQuery = http_build_query($returnQueryParams);
+
     toggle_essay_question_active($pdo, (int) $m[1]);
     $_SESSION['essay_questions_flash_message'] = 'Status soal esai berhasil diubah.';
     $_SESSION['essay_questions_flash_type'] = 'success';
-    redirect(route_path('/hr/essay-questions'));
+    $redirectPath = '/hr/essay-questions';
+    if ($returnQuery !== '') {
+        $redirectPath .= '?' . $returnQuery;
+    }
+    redirect(route_path($redirectPath));
 }
 
 if ($method === 'POST' && preg_match('#^/hr/essay-questions/(\d+)/delete$#', $path, $m)) {
     require_hr_auth($config);
+    $essayGroupOptions = load_essay_group_options($pdo);
+    $returnQueryRaw = trim((string) ($_POST['return_query'] ?? ''));
+    $returnQueryParams = [];
+    if ($returnQueryRaw !== '') {
+        $parsed = [];
+        parse_str($returnQueryRaw, $parsed);
+        if (is_array($parsed)) {
+            $group = trim((string) ($parsed['group'] ?? ''));
+            if ($group !== '' && in_array($group, $essayGroupOptions, true)) {
+                $returnQueryParams['group'] = $group;
+            }
+            if (array_key_exists('sort_by', $parsed)) {
+                $sortBy = normalize_essay_sort_by($parsed['sort_by'] ?? 'default');
+                if ($sortBy !== 'default') {
+                    $returnQueryParams['sort_by'] = $sortBy;
+                }
+            }
+            if (array_key_exists('sort_dir', $parsed)) {
+                $sortDir = normalize_sort_dir($parsed['sort_dir'] ?? 'asc');
+                if ($sortDir !== 'asc') {
+                    $returnQueryParams['sort_dir'] = $sortDir;
+                }
+            }
+            if (array_key_exists('per_page', $parsed)) {
+                $perPage = normalize_per_page_param($parsed['per_page'] ?? 20);
+                if ($perPage !== 20) {
+                    $returnQueryParams['per_page'] = $perPage;
+                }
+            }
+            if (array_key_exists('page', $parsed)) {
+                $page = normalize_page_param($parsed['page'] ?? 1);
+                if ($page > 1) {
+                    $returnQueryParams['page'] = $page;
+                }
+            }
+        }
+    }
+    $returnQuery = http_build_query($returnQueryParams);
+
     delete_essay_question($pdo, (int) $m[1]);
     $_SESSION['essay_questions_flash_message'] = 'Soal esai berhasil dihapus.';
     $_SESSION['essay_questions_flash_type'] = 'success';
-    redirect(route_path('/hr/essay-questions'));
+    $redirectPath = '/hr/essay-questions';
+    if ($returnQuery !== '') {
+        $redirectPath .= '?' . $returnQuery;
+    }
+    redirect(route_path($redirectPath));
 }
 
 if ($method === 'POST' && $path === '/hr/essay-questions/bulk-delete') {
     require_hr_auth($config);
+    $essayGroupOptions = load_essay_group_options($pdo);
+    $returnQueryRaw = trim((string) ($_POST['return_query'] ?? ''));
+    $returnQueryParams = [];
+    if ($returnQueryRaw !== '') {
+        $parsed = [];
+        parse_str($returnQueryRaw, $parsed);
+        if (is_array($parsed)) {
+            $group = trim((string) ($parsed['group'] ?? ''));
+            if ($group !== '' && in_array($group, $essayGroupOptions, true)) {
+                $returnQueryParams['group'] = $group;
+            }
+            if (array_key_exists('sort_by', $parsed)) {
+                $sortBy = normalize_essay_sort_by($parsed['sort_by'] ?? 'default');
+                if ($sortBy !== 'default') {
+                    $returnQueryParams['sort_by'] = $sortBy;
+                }
+            }
+            if (array_key_exists('sort_dir', $parsed)) {
+                $sortDir = normalize_sort_dir($parsed['sort_dir'] ?? 'asc');
+                if ($sortDir !== 'asc') {
+                    $returnQueryParams['sort_dir'] = $sortDir;
+                }
+            }
+            if (array_key_exists('per_page', $parsed)) {
+                $perPage = normalize_per_page_param($parsed['per_page'] ?? 20);
+                if ($perPage !== 20) {
+                    $returnQueryParams['per_page'] = $perPage;
+                }
+            }
+            if (array_key_exists('page', $parsed)) {
+                $page = normalize_page_param($parsed['page'] ?? 1);
+                if ($page > 1) {
+                    $returnQueryParams['page'] = $page;
+                }
+            }
+        }
+    }
+    $returnQuery = http_build_query($returnQueryParams);
+
     $ids = parse_bulk_ids_csv((string) ($_POST['ids_csv'] ?? ''));
     if (empty($ids)) {
         $_SESSION['essay_questions_flash_message'] = 'Pilih minimal 1 soal esai.';
         $_SESSION['essay_questions_flash_type'] = 'error';
-        redirect(route_path('/hr/essay-questions'));
+        $redirectPath = '/hr/essay-questions';
+        if ($returnQuery !== '') {
+            $redirectPath .= '?' . $returnQuery;
+        }
+        redirect(route_path($redirectPath));
     }
 
     $deleted = delete_essay_questions_bulk($pdo, $ids);
     $_SESSION['essay_questions_flash_message'] = "Berhasil menghapus {$deleted} soal esai.";
     $_SESSION['essay_questions_flash_type'] = 'success';
-    redirect(route_path('/hr/essay-questions'));
+    $redirectPath = '/hr/essay-questions';
+    if ($returnQuery !== '') {
+        $redirectPath .= '?' . $returnQuery;
+    }
+    redirect(route_path($redirectPath));
 }
 
 if ($method === 'GET' && $path === '/hr/essay-questions/template.csv') {

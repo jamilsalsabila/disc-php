@@ -10,6 +10,7 @@
       <a href="<?= h(route_path('/hr/dashboard')) ?>" class="btn-secondary">Kembali ke Dashboard</a>
       <a href="<?= h(route_path('/hr/candidates/' . $candidate['id'] . '/export/answers.csv')) ?>" class="btn-secondary">Download Jawaban CSV</a>
       <a href="<?= h(route_path('/hr/candidates/' . $candidate['id'] . '/export/answers.pdf')) ?>" class="btn-secondary">Download Jawaban PDF</a>
+      <a href="<?= h(route_path('/hr/candidates/' . $candidate['id'] . '/export/answers.doc')) ?>" class="btn-secondary">Download Jawaban Word</a>
       <form method="post" action="<?= h(route_path('/hr/candidates/' . $candidate['id'] . '/delete')) ?>" class="inline-form" onsubmit="return confirm('Hapus hasil tes kandidat ini? Tindakan ini tidak bisa dibatalkan.');">
         <input type="hidden" name="_csrf" value="<?= h($csrf_token) ?>">
         <button type="submit" class="btn-danger-outline">Hapus Hasil Tes</button>
@@ -67,10 +68,14 @@
       <p><strong>Indikasi integritas:</strong> <?= h((string) (($integrity_risk['level'] ?? 'Low'))) ?></p>
       <p><strong>Signal terdeteksi:</strong> Tab Switch <?= h((string) (($integrity_risk['tab_switches'] ?? 0))) ?>, Paste <?= h((string) (($integrity_risk['paste_count'] ?? 0))) ?></p>
       <p><strong>Typing pattern risk:</strong> <?= h((string) (($typing_risk['level'] ?? 'Low'))) ?> (score <?= h((string) (($typing_risk['score'] ?? 0))) ?>)</p>
+      <p><strong>Focus-loss severity:</strong> <?= h((string) (($focus_loss_severity['level'] ?? 'Low'))) ?> (score <?= h((string) (($focus_loss_severity['score'] ?? 0))) ?>, tab <?= h((string) (($focus_loss_severity['tab_switches'] ?? 0))) ?>, per10m <?= h((string) (($focus_loss_severity['switch_per_10min'] ?? 0))) ?>)</p>
+      <p><strong>Latency+paste anomaly:</strong> <?= h((string) (($latency_paste_anomaly['level'] ?? 'Low'))) ?> (score <?= h((string) (($latency_paste_anomaly['score'] ?? 0))) ?>, flagged <?= h((string) (($latency_paste_anomaly['flagged_rows'] ?? 0))) ?>)</p>
       <p><strong>Status:</strong> <?= h($candidate['status']) ?></p>
       <p><strong>Mulai tes:</strong> <?= h(format_date_id($candidate['started_at'])) ?></p>
       <p><strong>Selesai tes:</strong> <?= h(format_date_id($candidate['submitted_at'])) ?></p>
       <p><strong>Durasi:</strong> <?= h((string) ($candidate['duration_seconds'] ?? 0)) ?> detik</p>
+      <p><strong>Jawaban DISC terisi:</strong> <?= h((string) ((int) ($disc_answered_count ?? 0))) ?>/<?= h((string) ((int) ($disc_total_count ?? 0))) ?></p>
+      <p><strong>Jawaban esai terisi:</strong> <?= h((string) ((int) ($essay_answered_count ?? 0))) ?>/<?= h((string) ((int) ($essay_total_count ?? 0))) ?></p>
       <hr>
       <p><strong>Alasan rekomendasi:</strong></p>
       <p><?= h($candidate['reason'] ?? '-') ?></p>
