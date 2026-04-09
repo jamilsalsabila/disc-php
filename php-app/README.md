@@ -17,6 +17,7 @@ Versi produksi aplikasi asesmen DISC berbasis PHP + SQLite.
 - Integritas tes versi lanjutan:
   - event timeline kandidat (phase events),
   - typing pattern metrics untuk jawaban esai (keystroke/input/paste/active time).
+  - saat submit esai, frontend melakukan flush typing metrics dulu (dengan timeout singkat) agar data metrics tidak mudah kosong saat kandidat submit cepat.
 - Snapshot data kandidat (anti bentrok saat bank soal berubah):
   - Snapshot soal esai per kandidat disimpan ke DB saat masuk fase esai (`candidate_essay_questions`).
   - Jawaban esai + metadata snapshot tetap konsisten untuk profile/export meski role/group/soal diubah setelahnya.
@@ -42,8 +43,16 @@ Versi produksi aplikasi asesmen DISC berbasis PHP + SQLite.
   - tombol `Pilih Semua` bersifat toggle (klik lagi untuk membatalkan semua centang),
   - tombol `Delete` menghapus semua soal yang sedang dipilih.
 - Export data kandidat dan jawaban.
-  - Export per kandidat (CSV/PDF/Word) mencakup: ringkasan, jawaban DISC, jawaban esai, event timeline, event timeline lengkap (snapshot journey), typing metrics, dan catatan HR.
+  - Export per kandidat (CSV/PDF/Word) mencakup: ringkasan, jawaban DISC, jawaban esai, event timeline, event timeline lengkap (snapshot journey), dan typing metrics.
   - Ringkasan export juga menampilkan `Jawaban DISC terisi X/Y` dan `Jawaban Esai terisi X/Y`.
+  - Field `Rekomendasi`, `Kelayakan Wawancara`, dan section `Keterangan Lainnya` tidak ditampilkan di export per kandidat.
+- Tool perbaikan data dari dashboard:
+  - `Perbaiki Data Lama` / `Preview Perbaikan` untuk normalisasi snapshot/jawaban esai legacy.
+  - `Perbaiki Skor DISC` / `Preview Repair DISC` untuk hitung ulang scoring DISC dari mapping per-soal (`disc_a..disc_d`) tanpa terminal.
+  - repair DISC otomatis membuat backup ke tabel:
+    - `disc_repair_candidates_backup`
+    - `disc_repair_answers_backup`
+  - saat tombol tool dijalankan, dashboard menampilkan status `Memproses...` sampai proses selesai.
 - UI admin lebih rapih dan konsisten:
   - mode tabel `Compact/Normal` (preferensi tersimpan di browser),
   - tabel `Kelola Soal DISC`, `Kelola Soal Esai`, dashboard, dan profil kandidat lebih compact,

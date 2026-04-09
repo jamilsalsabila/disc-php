@@ -24,6 +24,7 @@
   let typingSaveInFlight = false;
   let typingSaveQueued = false;
   let lastVisibilitySignalAt = 0;
+  let isFinalSubmitting = false;
 
   const metricsByQuestion = {};
   textareas.forEach((ta) => {
@@ -193,6 +194,34 @@
       });
   }
 
+  function sendTypingMetricsNow() {
+    const csrf = getCsrfToken();
+    if (!csrf) {
+      return Promise.resolve();
+    }
+
+    const payload = new URLSearchParams();
+    payload.set('_csrf', csrf);
+    payload.set('metrics_json', JSON.stringify(snapshotTypingMetrics()));
+
+    return fetch(typingUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+      },
+      credentials: 'same-origin',
+      body: payload.toString()
+    }).catch(() => {});
+  }
+
+  function flushTypingMetricsWithTimeout(timeoutMs) {
+    const safeTimeout = Math.max(400, Number(timeoutMs || 1200));
+    return Promise.race([
+      sendTypingMetricsNow(),
+      new Promise((resolve) => setTimeout(resolve, safeTimeout))
+    ]);
+  }
+
   function tick() {
     const now = Date.now();
     const diffMs = deadline - now;
@@ -336,9 +365,24 @@
     });
   });
 
-  form.addEventListener('submit', () => {
+  form.addEventListener('submit', (event) => {
+    if (isFinalSubmitting) {
+      return;
+    }
+    event.preventDefault();
+    isFinalSubmitting = true;
+
+    const submitBtn = form.querySelector('button[type="submit"]');
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Menyimpan...';
+    }
+
     sendIntegrityEvent('submit_attempt', 'essay');
-    saveTypingMetrics();
+    flushTypingMetricsWithTimeout(1200).finally(() => {
+      isAutoSubmitting = true;
+      form.submit();
+    });
   });
 
   document.addEventListener('visibilitychange', () => {

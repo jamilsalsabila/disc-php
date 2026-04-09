@@ -512,9 +512,17 @@ function parse_draft_answers_from_candidate(array $candidate): array
 
         $mostCode = (string) $entry['most']['optionCode'];
         $leastCode = (string) $entry['least']['optionCode'];
+        $mostDisc = strtoupper(trim((string) ($entry['most']['disc'] ?? '')));
+        $leastDisc = strtoupper(trim((string) ($entry['least']['disc'] ?? '')));
+        if (!in_array($mostDisc, ['D', 'I', 'S', 'C'], true)) {
+            $mostDisc = (string) (OPTION_TO_DISC[$mostCode] ?? '');
+        }
+        if (!in_array($leastDisc, ['D', 'I', 'S', 'C'], true)) {
+            $leastDisc = (string) (OPTION_TO_DISC[$leastCode] ?? '');
+        }
         $answers[$qid] = [
-            'most' => ['optionCode' => $mostCode, 'disc' => OPTION_TO_DISC[$mostCode] ?? null],
-            'least' => ['optionCode' => $leastCode, 'disc' => OPTION_TO_DISC[$leastCode] ?? null],
+            'most' => ['optionCode' => $mostCode, 'disc' => $mostDisc !== '' ? $mostDisc : null],
+            'least' => ['optionCode' => $leastCode, 'disc' => $leastDisc !== '' ? $leastDisc : null],
         ];
     }
 
@@ -1257,6 +1265,317 @@ function preview_legacy_essay_data(PDO $pdo): array
     }
 
     return $stats;
+}
+
+function map_disc_by_option_code(string $optionCode, array $row): ?string
+{
+    $code = strtoupper(trim($optionCode));
+    if ($code === 'A') {
+        $disc = strtoupper(trim((string) ($row['disc_a'] ?? '')));
+        return in_array($disc, ['D', 'I', 'S', 'C'], true) ? $disc : null;
+    }
+    if ($code === 'B') {
+        $disc = strtoupper(trim((string) ($row['disc_b'] ?? '')));
+        return in_array($disc, ['D', 'I', 'S', 'C'], true) ? $disc : null;
+    }
+    if ($code === 'C') {
+        $disc = strtoupper(trim((string) ($row['disc_c'] ?? '')));
+        return in_array($disc, ['D', 'I', 'S', 'C'], true) ? $disc : null;
+    }
+    if ($code === 'D') {
+        $disc = strtoupper(trim((string) ($row['disc_d'] ?? '')));
+        return in_array($disc, ['D', 'I', 'S', 'C'], true) ? $disc : null;
+    }
+    return null;
+}
+
+function collect_disc_scoring_repair_plan(PDO $pdo, array $config, ?int $candidateId = null): array
+{
+    $sql = "SELECT * FROM candidates WHERE status IN ('submitted','timeout_submitted')";
+    $params = [];
+    if ($candidateId !== null && $candidateId > 0) {
+        $sql .= ' AND id = :id';
+        $params[':id'] = $candidateId;
+    }
+    $sql .= ' ORDER BY id ASC';
+
+    $stmtCandidates = $pdo->prepare($sql);
+    $stmtCandidates->execute($params);
+    $candidateRows = $stmtCandidates->fetchAll();
+
+    $stmtAnswers = $pdo->prepare(
+        'SELECT a.id, a.question_id, a.answer_type, a.option_code, a.disc_value, q.disc_a, q.disc_b, q.disc_c, q.disc_d
+         FROM answers a
+         LEFT JOIN questions_bank q ON q.id = a.question_id
+         WHERE a.candidate_id = ?
+         ORDER BY a.question_id ASC, a.answer_type ASC, a.id ASC'
+    );
+
+    $totalQuestions = count(list_questions($pdo, false, null));
+    $minimumRequired = (int) ceil($totalQuestions * (float) ($config['min_completion_ratio'] ?? 0.8));
+
+    $plan = [];
+    foreach ($candidateRows as $cand) {
+        $id = (int) ($cand['id'] ?? 0);
+        if ($id <= 0) {
+            continue;
+        }
+
+        $stmtAnswers->execute([$id]);
+        $rows = $stmtAnswers->fetchAll();
+        if (empty($rows)) {
+            continue;
+        }
+
+        $answersByQuestion = [];
+        $answerDiscFixes = [];
+        foreach ($rows as $row) {
+            $questionId = (int) ($row['question_id'] ?? 0);
+            $answerType = strtolower(trim((string) ($row['answer_type'] ?? '')));
+            if ($questionId <= 0 || ($answerType !== 'most' && $answerType !== 'least')) {
+                continue;
+            }
+
+            $mappedDisc = map_disc_by_option_code((string) ($row['option_code'] ?? ''), $row);
+            $oldDisc = strtoupper(trim((string) ($row['disc_value'] ?? '')));
+            if ($mappedDisc === null) {
+                if (in_array($oldDisc, ['D', 'I', 'S', 'C'], true)) {
+                    $mappedDisc = $oldDisc;
+                } else {
+                    continue;
+                }
+            }
+
+            if (!isset($answersByQuestion[$questionId])) {
+                $answersByQuestion[$questionId] = [];
+            }
+            $answersByQuestion[$questionId][$answerType . 'Disc'] = $mappedDisc;
+
+            if ($oldDisc !== $mappedDisc) {
+                $answerDiscFixes[] = [
+                    'answer_id' => (int) ($row['id'] ?? 0),
+                    'question_id' => $questionId,
+                    'answer_type' => $answerType,
+                    'option_code' => (string) ($row['option_code'] ?? ''),
+                    'old_disc_value' => $oldDisc,
+                    'new_disc_value' => $mappedDisc,
+                ];
+            }
+        }
+
+        foreach ($answersByQuestion as $questionId => $pair) {
+            if (!isset($pair['mostDisc']) || !isset($pair['leastDisc'])) {
+                unset($answersByQuestion[$questionId]);
+            }
+        }
+        if (empty($answersByQuestion)) {
+            continue;
+        }
+
+        $baseEvaluation = evaluate_candidate($answersByQuestion, (string) ($cand['selected_role'] ?? ''));
+        $answeredCount = count($answersByQuestion);
+        $evaluation = ($totalQuestions > 0 && $answeredCount < $minimumRequired)
+            ? build_incomplete_evaluation($baseEvaluation, $answeredCount, $totalQuestions)
+            : $baseEvaluation;
+
+        $newDisc = [
+            'D' => (int) (($evaluation['discCounts']['D'] ?? 0)),
+            'I' => (int) (($evaluation['discCounts']['I'] ?? 0)),
+            'S' => (int) (($evaluation['discCounts']['S'] ?? 0)),
+            'C' => (int) (($evaluation['discCounts']['C'] ?? 0)),
+        ];
+        $oldDisc = [
+            'D' => (int) ($cand['disc_d'] ?? 0),
+            'I' => (int) ($cand['disc_i'] ?? 0),
+            'S' => (int) ($cand['disc_s'] ?? 0),
+            'C' => (int) ($cand['disc_c'] ?? 0),
+        ];
+
+        $candidateNeedsUpdate =
+            $oldDisc['D'] !== $newDisc['D']
+            || $oldDisc['I'] !== $newDisc['I']
+            || $oldDisc['S'] !== $newDisc['S']
+            || $oldDisc['C'] !== $newDisc['C']
+            || (string) ($cand['recommendation'] ?? '') !== (string) ($evaluation['recommendation'] ?? '')
+            || (string) ($cand['reason'] ?? '') !== (string) ($evaluation['reason'] ?? '');
+
+        if (!$candidateNeedsUpdate && empty($answerDiscFixes)) {
+            continue;
+        }
+
+        $plan[] = [
+            'candidate' => $cand,
+            'answer_disc_fixes' => $answerDiscFixes,
+            'evaluation' => $evaluation,
+        ];
+    }
+
+    return [
+        'scanned_candidates' => count($candidateRows),
+        'total_questions' => $totalQuestions,
+        'minimum_required' => $minimumRequired,
+        'plan' => $plan,
+    ];
+}
+
+function preview_disc_scoring_repair(PDO $pdo, array $config, ?int $candidateId = null): array
+{
+    $res = collect_disc_scoring_repair_plan($pdo, $config, $candidateId);
+    $plan = $res['plan'];
+
+    $answerFixRows = 0;
+    foreach ($plan as $item) {
+        $answerFixRows += count($item['answer_disc_fixes'] ?? []);
+    }
+
+    return [
+        'scanned_candidates' => (int) ($res['scanned_candidates'] ?? 0),
+        'planned_candidates' => count($plan),
+        'candidate_updates' => count($plan),
+        'answer_disc_fixes' => $answerFixRows,
+    ];
+}
+
+function apply_disc_scoring_repair(PDO $pdo, array $config, ?int $candidateId = null): array
+{
+    $res = collect_disc_scoring_repair_plan($pdo, $config, $candidateId);
+    $plan = $res['plan'];
+    $runId = gmdate('Ymd_His') . '_disc_repair_' . substr(bin2hex(random_bytes(4)), 0, 8);
+    $now = now_iso();
+
+    $stats = [
+        'run_id' => $runId,
+        'scanned_candidates' => (int) ($res['scanned_candidates'] ?? 0),
+        'planned_candidates' => count($plan),
+        'updated_candidates' => 0,
+        'candidate_updates' => 0,
+        'answer_disc_fixes' => 0,
+        'backup_candidate_rows' => 0,
+        'backup_answer_rows' => 0,
+    ];
+
+    if (empty($plan)) {
+        return $stats;
+    }
+
+    $pdo->beginTransaction();
+    try {
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS disc_repair_candidates_backup (
+                backup_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id TEXT NOT NULL,
+                backed_up_at TEXT NOT NULL,
+                candidate_id INTEGER NOT NULL,
+                recommendation TEXT,
+                reason TEXT,
+                role_scores_json TEXT,
+                disc_d INTEGER,
+                disc_i INTEGER,
+                disc_s INTEGER,
+                disc_c INTEGER,
+                score_server INTEGER,
+                score_beverage INTEGER,
+                score_cook INTEGER
+            )'
+        );
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS disc_repair_answers_backup (
+                backup_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id TEXT NOT NULL,
+                backed_up_at TEXT NOT NULL,
+                answer_id INTEGER NOT NULL,
+                candidate_id INTEGER NOT NULL,
+                question_id INTEGER NOT NULL,
+                answer_type TEXT NOT NULL,
+                option_code TEXT,
+                old_disc_value TEXT,
+                new_disc_value TEXT
+            )'
+        );
+
+        $insCandBak = $pdo->prepare(
+            'INSERT INTO disc_repair_candidates_backup
+                (run_id, backed_up_at, candidate_id, recommendation, reason, role_scores_json, disc_d, disc_i, disc_s, disc_c, score_server, score_beverage, score_cook)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        );
+        $insAnsBak = $pdo->prepare(
+            'INSERT INTO disc_repair_answers_backup
+                (run_id, backed_up_at, answer_id, candidate_id, question_id, answer_type, option_code, old_disc_value, new_disc_value)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        );
+        $updAnswer = $pdo->prepare('UPDATE answers SET disc_value = ? WHERE id = ?');
+        $updCand = $pdo->prepare(
+            'UPDATE candidates
+             SET recommendation = ?, reason = ?, role_scores_json = ?, disc_d = ?, disc_i = ?, disc_s = ?, disc_c = ?, score_server = ?, score_beverage = ?, score_cook = ?
+             WHERE id = ?'
+        );
+
+        foreach ($plan as $item) {
+            $cand = $item['candidate'];
+            $ev = $item['evaluation'];
+            $candidateId2 = (int) ($cand['id'] ?? 0);
+
+            $insCandBak->execute([
+                $runId,
+                $now,
+                $candidateId2,
+                (string) ($cand['recommendation'] ?? ''),
+                (string) ($cand['reason'] ?? ''),
+                (string) ($cand['role_scores_json'] ?? ''),
+                (int) ($cand['disc_d'] ?? 0),
+                (int) ($cand['disc_i'] ?? 0),
+                (int) ($cand['disc_s'] ?? 0),
+                (int) ($cand['disc_c'] ?? 0),
+                (int) ($cand['score_server'] ?? 0),
+                (int) ($cand['score_beverage'] ?? 0),
+                (int) ($cand['score_cook'] ?? 0),
+            ]);
+            $stats['backup_candidate_rows']++;
+
+            foreach (($item['answer_disc_fixes'] ?? []) as $fix) {
+                $insAnsBak->execute([
+                    $runId,
+                    $now,
+                    (int) ($fix['answer_id'] ?? 0),
+                    $candidateId2,
+                    (int) ($fix['question_id'] ?? 0),
+                    (string) ($fix['answer_type'] ?? ''),
+                    (string) ($fix['option_code'] ?? ''),
+                    (string) ($fix['old_disc_value'] ?? ''),
+                    (string) ($fix['new_disc_value'] ?? ''),
+                ]);
+                $updAnswer->execute([
+                    (string) ($fix['new_disc_value'] ?? ''),
+                    (int) ($fix['answer_id'] ?? 0),
+                ]);
+                $stats['answer_disc_fixes']++;
+                $stats['backup_answer_rows']++;
+            }
+
+            $roleScores = is_array($ev['roleScores'] ?? null) ? $ev['roleScores'] : [];
+            $updCand->execute([
+                (string) ($ev['recommendation'] ?? 'TIDAK_DIREKOMENDASIKAN'),
+                (string) ($ev['reason'] ?? ''),
+                json_encode($roleScores, JSON_UNESCAPED_UNICODE),
+                (int) (($ev['discCounts']['D'] ?? 0)),
+                (int) (($ev['discCounts']['I'] ?? 0)),
+                (int) (($ev['discCounts']['S'] ?? 0)),
+                (int) (($ev['discCounts']['C'] ?? 0)),
+                (int) ($roleScores['SERVER'] ?? $roleScores['FLOOR_CREW'] ?? $roleScores['SERVER_SPECIALIST'] ?? 0),
+                (int) ($roleScores['MIXOLOGIST'] ?? $roleScores['BAR_CREW'] ?? $roleScores['BEVERAGE_SPECIALIST'] ?? 0),
+                (int) ($roleScores['COOK'] ?? $roleScores['KITCHEN_CREW'] ?? $roleScores['SENIOR_COOK'] ?? 0),
+                $candidateId2,
+            ]);
+            $stats['candidate_updates']++;
+            $stats['updated_candidates']++;
+        }
+
+        $pdo->commit();
+        return $stats;
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        throw $e;
+    }
 }
 
 function normalize_typing_rows(array $rows, ?string $expectedGroup = null): array
@@ -2327,6 +2646,47 @@ if ($method === 'POST' && $path === '/hr/tools/normalize-legacy-essay-preview') 
     redirect(route_path('/hr/dashboard'));
 }
 
+if ($method === 'POST' && $path === '/hr/tools/repair-disc-scoring-preview') {
+    require_hr_auth($config);
+    try {
+        $result = preview_disc_scoring_repair($pdo, $config);
+        $_SESSION['dashboard_flash_message'] =
+            'Preview repair DISC. ' .
+            'scan=' . (int) ($result['scanned_candidates'] ?? 0) .
+            ', planned=' . (int) ($result['planned_candidates'] ?? 0) .
+            ', candidate_updates=' . (int) ($result['candidate_updates'] ?? 0) .
+            ', answer_disc_fixes=' . (int) ($result['answer_disc_fixes'] ?? 0) .
+            '. Belum ada perubahan data.';
+        $_SESSION['dashboard_flash_type'] = 'success';
+    } catch (Throwable $e) {
+        $_SESSION['dashboard_flash_message'] = 'Preview repair DISC gagal: ' . $e->getMessage();
+        $_SESSION['dashboard_flash_type'] = 'error';
+    }
+    redirect(route_path('/hr/dashboard'));
+}
+
+if ($method === 'POST' && $path === '/hr/tools/repair-disc-scoring') {
+    require_hr_auth($config);
+    try {
+        $result = apply_disc_scoring_repair($pdo, $config);
+        $_SESSION['dashboard_flash_message'] =
+            'Repair DISC selesai. ' .
+            'scan=' . (int) ($result['scanned_candidates'] ?? 0) .
+            ', planned=' . (int) ($result['planned_candidates'] ?? 0) .
+            ', updated=' . (int) ($result['updated_candidates'] ?? 0) .
+            ', candidate_updates=' . (int) ($result['candidate_updates'] ?? 0) .
+            ', answer_disc_fixes=' . (int) ($result['answer_disc_fixes'] ?? 0) .
+            ', backup_candidate=' . (int) ($result['backup_candidate_rows'] ?? 0) .
+            ', backup_answer=' . (int) ($result['backup_answer_rows'] ?? 0) .
+            ', run_id=' . (string) ($result['run_id'] ?? '-');
+        $_SESSION['dashboard_flash_type'] = 'success';
+    } catch (Throwable $e) {
+        $_SESSION['dashboard_flash_message'] = 'Repair DISC gagal: ' . $e->getMessage();
+        $_SESSION['dashboard_flash_type'] = 'error';
+    }
+    redirect(route_path('/hr/dashboard'));
+}
+
 if ($method === 'GET' && $path === '/hr/master-data') {
     require_hr_auth($config);
 
@@ -2864,27 +3224,10 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)/export/answers\.csv$
             'payload_text' => $payloadText,
         ];
     }, $journeyEventsRaw);
-    $roleScores = extract_role_scores_from_candidate($candidate);
-    $interviewRecommendation = interview_recommendation_label($candidate, $roleScores);
     $integrityRisk = integrity_risk_from_candidate($candidate);
     $typingRisk = typing_risk_from_rows($typingRows);
     $focusLossSeverity = focus_loss_severity_from_events($integrityEventsRaw, $candidate);
     $latencyPasteAnomaly = latency_paste_anomaly_from_rows($typingRows);
-    $checklistRow = get_interview_checklist($pdo, $candidateId);
-
-    $checkedItems = [];
-    if ($checklistRow && is_string($checklistRow['checklist_json'] ?? null)) {
-        $decodedChecklist = json_decode((string) $checklistRow['checklist_json'], true);
-        if (is_array($decodedChecklist)) {
-            foreach (interview_checklist_sections() as $items) {
-                foreach ($items as $key => $label) {
-                    if (!empty($decodedChecklist[$key])) {
-                        $checkedItems[] = (string) $label;
-                    }
-                }
-            }
-        }
-    }
 
     header('Content-Type: text/csv; charset=utf-8');
     header('Content-Disposition: attachment; filename="candidate-answers-' . $candidateId . '-' . time() . '.csv"');
@@ -2892,9 +3235,9 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)/export/answers\.csv$
     $out = fopen('php://output', 'w');
     fputcsv($out, ['RINGKASAN KANDIDAT']);
     fputcsv($out, [
-        'Candidate ID', 'Nama', 'Email', 'WA', 'Role Dipilih', 'Rekomendasi Sistem', 'Kelayakan Wawancara',
+        'Candidate ID', 'Nama', 'Email', 'WA', 'Role Dipilih',
         'Status', 'Mulai', 'Selesai', 'Durasi (detik)', 'DISC D', 'DISC I', 'DISC S', 'DISC C',
-        'Jawaban DISC Terisi', 'Jawaban Esai Terisi', 'Integrity Risk', 'Typing Risk', 'Focus-loss Severity', 'Latency+Paste Anomaly', 'Final Keputusan HR',
+        'Jawaban DISC Terisi', 'Jawaban Esai Terisi', 'Integrity Risk', 'Typing Risk', 'Focus-loss Severity', 'Latency+Paste Anomaly',
     ]);
     fputcsv($out, [
         (int) ($candidate['id'] ?? 0),
@@ -2902,8 +3245,6 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)/export/answers\.csv$
         (string) ($candidate['email'] ?? ''),
         (string) ($candidate['whatsapp'] ?? ''),
         (string) ($candidate['selected_role'] ?? ''),
-        map_recommendation_label($candidate['recommendation'] ?? null),
-        $interviewRecommendation,
         (string) ($candidate['status'] ?? ''),
         format_date_id((string) ($candidate['started_at'] ?? '')),
         format_date_id((string) ($candidate['submitted_at'] ?? '')),
@@ -2918,13 +3259,12 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)/export/answers\.csv$
         (string) ($typingRisk['level'] ?? 'Low') . ' (score=' . (int) ($typingRisk['score'] ?? 0) . ')',
         (string) ($focusLossSeverity['level'] ?? 'Low') . ' (score=' . (int) ($focusLossSeverity['score'] ?? 0) . ', tab=' . (int) ($focusLossSeverity['tab_switches'] ?? 0) . ')',
         (string) ($latencyPasteAnomaly['level'] ?? 'Low') . ' (score=' . (int) ($latencyPasteAnomaly['score'] ?? 0) . ', flagged=' . (int) ($latencyPasteAnomaly['flagged_rows'] ?? 0) . ')',
-        (string) ($checklistRow['final_decision'] ?? '-'),
     ]);
 
     fputcsv($out, ['']);
     fputcsv($out, ['JAWABAN DISC']);
     fputcsv($out, [
-        'Candidate ID', 'Nama', 'Email', 'WA', 'Role Dipilih', 'Rekomendasi', 'Status',
+        'Candidate ID', 'Nama', 'Email', 'WA', 'Role Dipilih', 'Status',
         'No Soal', 'Role Soal', 'Most', 'Most Text', 'Least', 'Least Text',
         'Mapping A->DISC', 'Mapping B->DISC', 'Mapping C->DISC', 'Mapping D->DISC',
     ]);
@@ -2937,7 +3277,6 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)/export/answers\.csv$
             $row['email'],
             $row['whatsapp'],
             $row['selected_role'],
-            map_recommendation_label($row['recommendation'] ?? null),
             $row['status'],
             (int) ($row['question_order'] ?? 0),
             $row['question_role'] ?? '-',
@@ -3006,13 +3345,6 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)/export/answers\.csv$
         ]);
     }
 
-    fputcsv($out, ['']);
-    fputcsv($out, ['KETERANGAN LAINNYA']);
-    fputcsv($out, ['Alasan Rekomendasi', (string) ($candidate['reason'] ?? '-')]);
-    fputcsv($out, ['Catatan Kekuatan HR', (string) ($checklistRow['strengths_notes'] ?? '-')]);
-    fputcsv($out, ['Catatan Risiko HR', (string) ($checklistRow['risk_notes'] ?? '-')]);
-    fputcsv($out, ['Saran Penempatan HR', (string) ($checklistRow['placement_notes'] ?? '-')]);
-    fputcsv($out, ['Checklist Interview (checked)', !empty($checkedItems) ? implode(' | ', $checkedItems) : '-']);
     fclose($out);
     exit;
 }
@@ -3083,26 +3415,10 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)/export/answers\.(pdf
             'payload_text' => $payloadText,
         ];
     }, $journeyEventsRaw);
-    $roleScores = extract_role_scores_from_candidate($candidate);
-    $interviewRecommendation = interview_recommendation_label($candidate, $roleScores);
     $integrityRisk = integrity_risk_from_candidate($candidate);
     $typingRisk = typing_risk_from_rows($typingRows);
     $focusLossSeverity = focus_loss_severity_from_events($integrityEventsRaw, $candidate);
     $latencyPasteAnomaly = latency_paste_anomaly_from_rows($typingRows);
-    $checklistRow = get_interview_checklist($pdo, $candidateId);
-    $checkedItems = [];
-    if ($checklistRow && is_string($checklistRow['checklist_json'] ?? null)) {
-        $decodedChecklist = json_decode((string) $checklistRow['checklist_json'], true);
-        if (is_array($decodedChecklist)) {
-            foreach (interview_checklist_sections() as $items) {
-                foreach ($items as $key => $label) {
-                    if (!empty($decodedChecklist[$key])) {
-                        $checkedItems[] = (string) $label;
-                    }
-                }
-            }
-        }
-    }
 
     if ($exportFormat === 'doc') {
         header('Content-Type: application/msword; charset=utf-8');
@@ -3115,8 +3431,6 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)/export/answers\.(pdf
     echo '<p><strong>Nama:</strong> ' . h((string) ($candidate['full_name'] ?? '-')) . '<br>';
     echo '<strong>Email:</strong> ' . h((string) ($candidate['email'] ?? '-')) . '<br>';
     echo '<strong>Role Dipilih:</strong> ' . h((string) ($candidate['selected_role'] ?? '-')) . '<br>';
-    echo '<strong>Rekomendasi:</strong> ' . h(map_recommendation_label($candidate['recommendation'] ?? null)) . '<br>';
-    echo '<strong>Kelayakan Wawancara:</strong> ' . h($interviewRecommendation) . '<br>';
     echo '<strong>Jawaban DISC Terisi:</strong> ' . h((string) $discAnsweredCount) . '/' . h((string) $discTotalCount) . '<br>';
     echo '<strong>Jawaban Esai Terisi:</strong> ' . h((string) $essayAnsweredCount) . '/' . h((string) $essayTotalCount) . '<br>';
     echo '<strong>Status:</strong> ' . h((string) ($candidate['status'] ?? '-')) . '<br>';
@@ -3124,11 +3438,6 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)/export/answers\.(pdf
     echo '<strong>Typing Risk:</strong> ' . h((string) ($typingRisk['level'] ?? 'Low')) . ' (score=' . h((string) ((int) ($typingRisk['score'] ?? 0))) . ')</p>';
     echo '<p><strong>Focus-loss Severity:</strong> ' . h((string) ($focusLossSeverity['level'] ?? 'Low')) . ' (score=' . h((string) ((int) ($focusLossSeverity['score'] ?? 0))) . ', tab=' . h((string) ((int) ($focusLossSeverity['tab_switches'] ?? 0))) . ', per10m=' . h((string) ($focusLossSeverity['switch_per_10min'] ?? 0)) . ')<br>';
     echo '<strong>Latency+Paste Anomaly:</strong> ' . h((string) ($latencyPasteAnomaly['level'] ?? 'Low')) . ' (score=' . h((string) ((int) ($latencyPasteAnomaly['score'] ?? 0))) . ', flagged=' . h((string) ((int) ($latencyPasteAnomaly['flagged_rows'] ?? 0))) . ')</p>';
-    if ($exportFormat === 'pdf') {
-        echo '<p>Gunakan menu browser: Print -> Save as PDF.</p>';
-    } else {
-        echo '<p>Dokumen ini bisa langsung dibuka di Microsoft Word.</p>';
-    }
 
     echo '<h3>Jawaban DISC</h3>';
     echo '<table><thead><tr><th>No</th><th>Role Soal</th><th>Most</th><th>Least</th><th>Mapping DISC</th></tr></thead><tbody>';
@@ -3202,13 +3511,6 @@ if ($method === 'GET' && preg_match('#^/hr/candidates/(\d+)/export/answers\.(pdf
     }
     echo '</tbody></table>';
 
-    echo '<h3>Keterangan Lainnya</h3>';
-    echo '<p><strong>Alasan Rekomendasi:</strong> ' . h((string) ($candidate['reason'] ?? '-')) . '<br>';
-    echo '<strong>Final Keputusan HR:</strong> ' . h((string) ($checklistRow['final_decision'] ?? '-')) . '<br>';
-    echo '<strong>Catatan Kekuatan HR:</strong> ' . h((string) ($checklistRow['strengths_notes'] ?? '-')) . '<br>';
-    echo '<strong>Catatan Risiko HR:</strong> ' . h((string) ($checklistRow['risk_notes'] ?? '-')) . '<br>';
-    echo '<strong>Saran Penempatan HR:</strong> ' . h((string) ($checklistRow['placement_notes'] ?? '-')) . '<br>';
-    echo '<strong>Checklist Interview (checked):</strong> ' . h(!empty($checkedItems) ? implode(' | ', $checkedItems) : '-') . '</p>';
     echo '</body></html>';
     exit;
 }

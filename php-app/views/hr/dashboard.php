@@ -9,11 +9,19 @@
       <button type="button" class="btn-secondary" id="timeout-refresh-btn">Refresh Status</button>
       <form method="post" action="<?= h(route_path('/hr/tools/normalize-legacy-essay')) ?>" class="inline-form" onsubmit="return confirm('Jalankan perbaikan data lama sekarang? Sistem akan backup dulu sebelum normalisasi.');">
         <input type="hidden" name="_csrf" value="<?= h($csrf_token) ?>">
-        <button type="submit" class="btn-secondary">Perbaiki Data Lama</button>
+        <button type="submit" class="btn-secondary" data-tool-action>Perbaiki Data Lama</button>
       </form>
       <form method="post" action="<?= h(route_path('/hr/tools/normalize-legacy-essay-preview')) ?>" class="inline-form">
         <input type="hidden" name="_csrf" value="<?= h($csrf_token) ?>">
-        <button type="submit" class="btn-secondary">Preview Perbaikan</button>
+        <button type="submit" class="btn-secondary" data-tool-action>Preview Perbaikan</button>
+      </form>
+      <form method="post" action="<?= h(route_path('/hr/tools/repair-disc-scoring-preview')) ?>" class="inline-form">
+        <input type="hidden" name="_csrf" value="<?= h($csrf_token) ?>">
+        <button type="submit" class="btn-secondary" data-tool-action>Preview Repair DISC</button>
+      </form>
+      <form method="post" action="<?= h(route_path('/hr/tools/repair-disc-scoring')) ?>" class="inline-form" onsubmit="return confirm('Jalankan repair skor DISC sekarang? Sistem akan backup dulu sebelum update.');">
+        <input type="hidden" name="_csrf" value="<?= h($csrf_token) ?>">
+        <button type="submit" class="btn-secondary" data-tool-action>Perbaiki Skor DISC</button>
       </form>
       <a href="<?= h(route_path('/hr/questions')) ?>" class="btn-secondary">Kelola Soal DISC</a>
       <a href="<?= h(route_path('/hr/essay-questions')) ?>" class="btn-secondary">Kelola Soal Esai</a>
@@ -27,6 +35,10 @@
       </form>
     </div>
   </header>
+
+  <div id="tool-progress-indicator" class="alert" style="display:none;">
+    Memproses... mohon tunggu sampai halaman selesai dimuat ulang.
+  </div>
 
   <?php if (!empty($flash_message)): ?>
     <div class="alert <?= ($flash_type ?? 'info') === 'error' ? 'alert-danger' : 'alert-success' ?>">
@@ -145,3 +157,35 @@
   window.initialPagination = <?= json_encode($pagination ?? ['page' => 1, 'per_page' => 20, 'total' => 0, 'total_pages' => 1, 'from' => 0, 'to' => 0], JSON_UNESCAPED_UNICODE) ?>;
 </script>
 <script src="<?= h(asset_path('hr-dashboard.js')) ?>"></script>
+<script>
+  (function () {
+    const forms = Array.from(document.querySelectorAll('form.inline-form[action*="/hr/tools/"]'));
+    if (!forms.length) return;
+
+    let running = false;
+    const indicator = document.getElementById('tool-progress-indicator');
+    const actionButtons = Array.from(document.querySelectorAll('[data-tool-action]'));
+
+    forms.forEach((form) => {
+      form.addEventListener('submit', function () {
+        if (running) {
+          return false;
+        }
+        running = true;
+
+        if (indicator) {
+          indicator.style.display = '';
+          indicator.classList.add('alert-success');
+        }
+
+        actionButtons.forEach((btn) => {
+          btn.disabled = true;
+          if (!btn.dataset.originalText) {
+            btn.dataset.originalText = btn.textContent || '';
+          }
+          btn.textContent = 'Memproses...';
+        });
+      });
+    });
+  })();
+</script>
